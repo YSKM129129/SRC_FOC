@@ -4,6 +4,7 @@
 #include "fdcan.h"
 #include "foc_control.h"
 #include "foc_can.h"
+#include "foc_spi2_link.h"
 #include "gpio.h"
 #include "spi.h"
 #include "tim.h"
@@ -40,7 +41,7 @@ int main(void)
     /* Start PWM, current sampling, encoder feedback and FOC control. */
     FOC_Init();
 
-    /* Main-loop work is handled by interrupts and low-rate CAN telemetry. */
+    /* Main-loop work is handled by interrupts and low-rate telemetry links. */
     uint32_t last_telemetry_ms = HAL_GetTick();
 
     while (1)
@@ -49,6 +50,7 @@ int main(void)
         {
             last_telemetry_ms = HAL_GetTick();
             (void)FOC_Can_SendTelemetry();
+            (void)FOC_Spi2_Exchange();
         }
 
         HAL_Delay(1);

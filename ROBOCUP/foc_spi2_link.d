@@ -1,4 +1,5 @@
-robocup/main.o: Core\Src\main.c Core\Inc\main.h \
+robocup/foc_spi2_link.o: Core\Src\foc_spi2_link.c \
+  Core\Inc\foc_spi2_link.h Core\Inc\main.h \
   Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal.h \
   Core\Inc\stm32g4xx_hal_conf.h \
   Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_rcc.h \
@@ -30,6 +31,5 @@ robocup/main.o: Core\Src\main.c Core\Inc\main.h \
   Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_tim_ex.h \
   Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_uart.h \
   Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_uart_ex.h \
-  Core\Inc\adc.h Core\Inc\dma.h Core\Inc\fdcan.h Core\Inc\foc_control.h \
-  Core\Inc\spi.h Core\Inc\tim.h Core\Inc\foc_can.h \
-  Core\Inc\foc_spi2_link.h Core\Inc\gpio.h Core\Inc\usart.h
+  Core\Inc\foc_control.h Core\Inc\adc.h Core\Inc\spi.h Core\Inc\tim.h \
+  Core\Inc\gpio.h

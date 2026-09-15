@@ -3,6 +3,7 @@
 "robocup\main.o"
 "robocup\foc_control.o"
 "robocup\foc_can.o"
+"robocup\foc_spi2_link.o"
 "robocup\gpio.o"
 "robocup\adc.o"
 "robocup\dma.o"

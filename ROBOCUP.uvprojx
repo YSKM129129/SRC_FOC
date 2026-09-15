@@ -410,6 +410,11 @@
               <FilePath>Core/Src/foc_can.c</FilePath>
             </File>
             <File>
+              <FileName>foc_spi2_link.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>Core/Src/foc_spi2_link.c</FilePath>
+            </File>
+            <File>
               <FileName>gpio.c</FileName>
               <FileType>1</FileType>
               <FilePath>Core/Src/gpio.c</FilePath>

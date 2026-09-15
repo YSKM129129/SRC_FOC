@@ -57,7 +57,8 @@ void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOA, LED2_Pin|LED1_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, DRV_CS_Pin|AS5047P_CS_Pin|SPI2_CS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, DRV_CS_Pin|AS5047P_CS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(SPI2_CS_GPIO_Port, SPI2_CS_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pins : DRV_ENBLE_Pin DRV_cotr_Pin */
   GPIO_InitStruct.Pin = DRV_ENBLE_Pin|DRV_cotr_Pin;
