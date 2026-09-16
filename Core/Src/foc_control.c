@@ -1,5 +1,6 @@
 #include "foc_control.h"
 #include "gpio.h"
+#include "DRV8353.h"
 #include <math.h>
 
 #define ADC_FS 4095.0f
@@ -28,6 +29,30 @@ static float encoder_direction = 1.0f, electrical_offset;
 static float enc_prev, enc_turns;
 static pi_t pi_q = {0.08f, 0.0008f, 0, 0};
 static pi_t pi_d = {0.08f, 0.0008f, 0, 0};
+
+void Blink_LED(int led)
+{
+    if (led == LED_5V)
+    {
+        for(int i=0; i<5; i++)
+        {
+            HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
+            HAL_Delay(200);
+            HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
+            HAL_Delay(200);
+        }
+    }
+    else if (led == LED_3V3)
+    {
+        for(int i=0; i<5; i++)
+        {
+            HAL_GPIO_WritePin(LED1_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
+            HAL_Delay(200);
+            HAL_GPIO_WritePin(LED1_GPIO_Port, LED2_Pin, GPIO_PIN_RESET);
+            HAL_Delay(200);
+        }    
+    }
+}
 
 static void stop_fault(uint32_t fault)
 {
@@ -153,7 +178,10 @@ static void svpwm(float theta,float vd,float vq)
             w=0.5f+0.5f*(-0.5f*al-0.8660254f*be);
     pwm(u,v,w);
 }
-void FOC_SetTorque(float iq_norm){iq_ref=isfinite(iq_norm)?clamp(iq_norm,-1,1):0.0f;}
+void FOC_SetTorque(float iq_norm)
+{
+    iq_ref=isfinite(iq_norm)?clamp(iq_norm,-1,1):0.0f;
+}
 
 /* Initialization runs once in main; interrupts continue during these waits. */
 static uint32_t align_wait(uint32_t ms)
@@ -170,7 +198,11 @@ static uint32_t align_wait(uint32_t ms)
 
 void FOC_Init(void)
 {
-    if (!driver_init()) { return; }
+    if (!driver_init()) 
+    { 
+        Blink_LED(LED_3V3); 
+        return; 
+    }
     pwm(0.5f,0.5f,0.5f);
     /* Load all CCR preloads and RCR=19 before starting from CNT=0.
        Update/TRGO then occurs at underflow, once per 10 PWM periods. */

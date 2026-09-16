@@ -21,8 +21,12 @@
 #define FOC_FAULT_STARTUP       (1UL << 1)
 #define FOC_FAULT_ENCODER       (1UL << 2)
 #define FOC_FAULT_ALIGNMENT     (1UL << 3)
+#define LED_5V      1
+#define LED_3V3     2
+
 void FOC_Init(void);
 void FOC_SetTorque(float iq_norm);
+void Blink_LED(int led);
 float FOC_GetAngle(void);
 float FOC_GetSpeed(void);
 float FOC_GetIq(void);
