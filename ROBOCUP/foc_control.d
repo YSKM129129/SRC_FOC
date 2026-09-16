@@ -1,33 +1,46 @@
-robocup/foc_control.o: Core\Src\foc_control.c Core\Inc\foc_control.h \
-  Core\Inc\main.h Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal.h \
-  Core\Inc\stm32g4xx_hal_conf.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_rcc.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_def.h \
-  Drivers\CMSIS\Device\ST\STM32G4xx\Include\stm32g4xx.h \
-  Drivers\CMSIS\Device\ST\STM32G4xx\Include\stm32g474xx.h \
-  Drivers\CMSIS\Include\core_cm4.h \
-  Drivers\CMSIS\Device\ST\STM32G4xx\Include\system_stm32g4xx.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\Legacy\stm32_hal_legacy.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_rcc_ex.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_gpio.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_gpio_ex.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_dma.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_dma_ex.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_cortex.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_adc.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_ll_adc.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_adc_ex.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_exti.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_fdcan.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_flash.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_flash_ex.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_flash_ramfunc.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_pwr.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_pwr_ex.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_spi.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_spi_ex.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_tim.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_tim_ex.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_uart.h \
-  Drivers\STM32G4xx_HAL_Driver\Inc\stm32g4xx_hal_uart_ex.h \
-  Core\Inc\adc.h Core\Inc\spi.h Core\Inc\tim.h Core\Inc\gpio.h
+robocup\foc_control.o: Core/Src/foc_control.c
+robocup\foc_control.o: Core/Inc/foc_control.h
+robocup\foc_control.o: Core/Inc/main.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal.h
+robocup\foc_control.o: Core/Inc/stm32g4xx_hal_conf.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_rcc.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_def.h
+robocup\foc_control.o: Drivers/CMSIS/Device/ST/STM32G4xx/Include/stm32g4xx.h
+robocup\foc_control.o: Drivers/CMSIS/Device/ST/STM32G4xx/Include/stm32g474xx.h
+robocup\foc_control.o: Drivers/CMSIS/Include/core_cm4.h
+robocup\foc_control.o: D:\Keil_v5\ARM\ARMCC\bin\..\include\stdint.h
+robocup\foc_control.o: Drivers/CMSIS/Include/cmsis_version.h
+robocup\foc_control.o: Drivers/CMSIS/Include/cmsis_compiler.h
+robocup\foc_control.o: Drivers/CMSIS/Include/cmsis_armcc.h
+robocup\foc_control.o: Drivers/CMSIS/Include/mpu_armv7.h
+robocup\foc_control.o: Drivers/CMSIS/Device/ST/STM32G4xx/Include/system_stm32g4xx.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/Legacy/stm32_hal_legacy.h
+robocup\foc_control.o: D:\Keil_v5\ARM\ARMCC\bin\..\include\stddef.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_rcc_ex.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_gpio.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_gpio_ex.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_dma.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_dma_ex.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_cortex.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_adc.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_ll_adc.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_adc_ex.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_exti.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_fdcan.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_flash.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_flash_ex.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_flash_ramfunc.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_pwr.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_pwr_ex.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_spi.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_spi_ex.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_tim.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_tim_ex.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_uart.h
+robocup\foc_control.o: Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_uart_ex.h
+robocup\foc_control.o: Core/Inc/adc.h
+robocup\foc_control.o: Core/Inc/spi.h
+robocup\foc_control.o: Core/Inc/tim.h
+robocup\foc_control.o: Core/Inc/gpio.h
+robocup\foc_control.o: D:\Keil_v5\ARM\ARMCC\bin\..\include\math.h

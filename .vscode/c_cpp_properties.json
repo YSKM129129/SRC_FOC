@@ -3,14 +3,15 @@
         {
             "name": "ROBOCUP",
             "includePath": [
-                "f:\\ROBOCUP\\SRC-FOC\\Core\\Inc",
-                "f:\\ROBOCUP\\SRC-FOC\\Drivers\\STM32G4xx_HAL_Driver\\Inc",
-                "f:\\ROBOCUP\\SRC-FOC\\Drivers\\STM32G4xx_HAL_Driver\\Inc\\Legacy",
-                "f:\\ROBOCUP\\SRC-FOC\\Drivers\\CMSIS\\Device\\ST\\STM32G4xx\\Include",
-                "f:\\ROBOCUP\\SRC-FOC\\Drivers\\CMSIS\\Include",
-                "f:\\ROBOCUP\\SRC-FOC",
-                "f:\\ROBOCUP\\SRC-FOC\\Core\\Src",
-                "f:\\ROBOCUP\\SRC-FOC\\Drivers\\STM32G4xx_HAL_Driver\\Src"
+                "e:\\myCode\\STM32\\SRC-FOC\\SRC-FOC\\Core\\Inc",
+                "e:\\myCode\\STM32\\SRC-FOC\\SRC-FOC\\Drivers\\STM32G4xx_HAL_Driver\\Inc",
+                "e:\\myCode\\STM32\\SRC-FOC\\SRC-FOC\\Drivers\\STM32G4xx_HAL_Driver\\Inc\\Legacy",
+                "e:\\myCode\\STM32\\SRC-FOC\\SRC-FOC\\Drivers\\CMSIS\\Device\\ST\\STM32G4xx\\Include",
+                "e:\\myCode\\STM32\\SRC-FOC\\SRC-FOC\\Drivers\\CMSIS\\Include",
+                "D:\\Keil_v5\\ARM\\ARMCLANG\\include",
+                "e:\\myCode\\STM32\\SRC-FOC\\SRC-FOC",
+                "e:\\myCode\\STM32\\SRC-FOC\\SRC-FOC\\Core\\Src",
+                "e:\\myCode\\STM32\\SRC-FOC\\SRC-FOC\\Drivers\\STM32G4xx_HAL_Driver\\Src"
             ],
             "defines": [
                 "USE_HAL_DRIVER",

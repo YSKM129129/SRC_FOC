@@ -70,7 +70,9 @@ void MX_TIM1_Init(void)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  /* PWM2 leaves the high-side inputs low around CNT=0, where TRGO samples
+     the low-side shunts. foc_control.c inverts CCR to preserve duty sense. */
+  sConfigOC.OCMode = TIM_OCMODE_PWM2;
   sConfigOC.Pulse = 1062;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
@@ -179,7 +181,8 @@ void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* tim_baseHandle)
     /* TIM5 clock enable */
     __HAL_RCC_TIM5_CLK_ENABLE();
   /* USER CODE BEGIN TIM5_MspInit 1 */
-
+    HAL_NVIC_SetPriority(TIM5_IRQn, 2, 0);
+    HAL_NVIC_EnableIRQ(TIM5_IRQn);
   /* USER CODE END TIM5_MspInit 1 */
   }
 }
@@ -238,7 +241,7 @@ void HAL_TIM_Base_MspDeInit(TIM_HandleTypeDef* tim_baseHandle)
     /* Peripheral clock disable */
     __HAL_RCC_TIM5_CLK_DISABLE();
   /* USER CODE BEGIN TIM5_MspDeInit 1 */
-
+    HAL_NVIC_DisableIRQ(TIM5_IRQn);
   /* USER CODE END TIM5_MspDeInit 1 */
   }
 }

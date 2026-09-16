@@ -50,7 +50,8 @@ void MX_ADC1_Init(void)
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
   hadc1.Init.GainCompensation = 0;
   hadc1.Init.ScanConvMode = ADC_SCAN_ENABLE;
-  hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  /* Run the current loop once after both injected phase-current channels. */
+  hadc1.Init.EOCSelection = ADC_EOC_SEQ_CONV;
   hadc1.Init.LowPowerAutoWait = DISABLE;
   hadc1.Init.ContinuousConvMode = ENABLE;
   hadc1.Init.NbrOfConversion = 1;
@@ -207,7 +208,8 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* adcHandle)
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* USER CODE BEGIN ADC1_MspInit 1 */
-
+    HAL_NVIC_SetPriority(ADC1_2_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(ADC1_2_IRQn);
   /* USER CODE END ADC1_MspInit 1 */
   }
   else if(adcHandle->Instance==ADC2)
@@ -274,7 +276,7 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* adcHandle)
     HAL_GPIO_DeInit(GPIOA, ADC_IU_Pin|ADC_IV_Pin);
 
   /* USER CODE BEGIN ADC1_MspDeInit 1 */
-
+    HAL_NVIC_DisableIRQ(ADC1_2_IRQn);
   /* USER CODE END ADC1_MspDeInit 1 */
   }
   else if(adcHandle->Instance==ADC2)

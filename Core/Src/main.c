@@ -10,6 +10,14 @@
 #include "tim.h"
 #include "usart.h"
 
+/* Simulate the existing received Iq command: -1000..1000 = -1..1.
+   30 means normalized Iq 0.03 (0.3 A with the existing 10 A scale).
+   Set FOC_DEBUG_FAKE_COMMAND to 0 to use real CAN/SPI2 commands. */
+#ifndef FOC_DEBUG_FAKE_COMMAND
+#define FOC_DEBUG_FAKE_COMMAND 1
+#endif
+#define FOC_DEBUG_IQ_COMMAND   30
+
 /* System clock configuration generated for the STM32G474. */
 void SystemClock_Config(void);
 
@@ -32,16 +40,23 @@ int main(void)
     MX_ADC2_Init();
     MX_SPI2_Init();
 
+#if !FOC_DEBUG_FAKE_COMMAND
     /* Start the CAN node before accepting commands from the master. */
     if (FOC_Can_Init() != HAL_OK)
     {
         Error_Handler();
     }
 
+#endif
+
     /* Start PWM, current sampling, encoder feedback and FOC control. */
     FOC_Init();
+#if FOC_DEBUG_FAKE_COMMAND
+    FOC_SetTorque((float)FOC_DEBUG_IQ_COMMAND / 1000.0f);
+#endif
 
     /* Main-loop work is handled by interrupts and low-rate telemetry links. */
+    /*Main FOC control unit is in HAL_ADCEx_InjectedConvCpltCallback at foc_control.c*/
     uint32_t last_telemetry_ms = HAL_GetTick();
 
     while (1)
@@ -49,8 +64,13 @@ int main(void)
         if ((HAL_GetTick() - last_telemetry_ms) >= 10U)
         {
             last_telemetry_ms = HAL_GetTick();
+#if FOC_DEBUG_FAKE_COMMAND
+            /* Same conversion and entry point as a received command packet. */
+            FOC_SetTorque((float)FOC_DEBUG_IQ_COMMAND / 1000.0f);
+#else
             (void)FOC_Can_SendTelemetry();
             (void)FOC_Spi2_Exchange();
+#endif
         }
 
         HAL_Delay(1);

@@ -3,58 +3,71 @@
 <pre>
 <h1>µVision Build Log</h1>
 <h2>Tool Versions:</h2>
-IDE-Version: ¦ÌVision V5.43.1.0
-Copyright (C) 2025 ARM Ltd and ARM Germany GmbH. All rights reserved.
-License Information: yang hong, 1, LIC=QF82M-XADLS-HLVCL-057BS-KZDP7-A0WRS
+IDE-Version: ¦ÌVision V5.38.0.0
+Copyright (C) 2022 ARM Ltd and ARM Germany GmbH. All rights reserved.
+License Information: Xuanting Liu, Shanghai Jiao Tong University, LIC=FQQMM-XGSSU-LVR1I-TLI9S-TA5NE-IUDHF
  
 Tool Versions:
-Toolchain:       MDK-ARM Plus  Version: 5.43.0.0
-Toolchain Path:  F:\Keil_v5\ARM\ARMCLANG\Bin
-C Compiler:      ArmClang.exe V6.24
-Assembler:       Armasm.exe V6.24
-Linker/Locator:  ArmLink.exe V6.24
-Library Manager: ArmAr.exe V6.24
-Hex Converter:   FromElf.exe V6.24
-CPU DLL:         SARMCM3.DLL V5.43.0.0
-Dialog DLL:      DCM.DLL V1.17.5.0
-Target DLL:      STLink\ST-LINKIII-KEIL_SWO.dll V3.3.1.0
-Dialog DLL:      TCM.DLL V1.56.6.0
+Toolchain:       MDK-ARM Professional  Version: 5.14.0.0
+Toolchain Path:  D:\Keil_v5\ARM\ARMCC\bin\
+C Compiler:      Armcc.exe V5.05 update 1 (build 106)
+Assembler:       Armasm.exe V5.05 update 1 (build 106)
+Linker/Locator:  ArmLink.exe V5.05 update 1 (build 106)
+Library Manager: ArmAr.exe V5.05 update 1 (build 106)
+Hex Converter:   FromElf.exe V5.05 update 1 (build 106)
+CPU DLL:         SARMCM3.DLL V5.14.0.0
+Dialog DLL:      DCM.DLL V1.13.1.0
+Target DLL:      Segger\JL2CM3.dll V2.99.13.0
+Dialog DLL:      TCM.DLL V1.14.4.0
  
 <h2>Project:</h2>
-F:\ROBOCUP\SRC-FOC\ROBOCUP.uvprojx
-Project File Date:  09/15/2026
+E:\myCode\STM32\SRC-FOC\SRC-FOC\ROBOCUP.uvprojx
+Project File Date:  09/16/2026
 
 <h2>Output:</h2>
-*** Using Compiler 'V6.24', folder: 'F:\Keil_v5\ARM\ARMCLANG\Bin'
+  
+Warning: *** SUPPORT EXPIRED, NEW PRODUCT SERIAL NUMBER REQUIRED ***
+         *** Running with Code Size Limit: 32K                   ***
+*** Using Compiler '', folder: 'D:\Keil_v5\ARM\ARMCC\bin\'
 Build target 'ROBOCUP'
+compiling adc.c...
+compiling dma.c...
+compiling foc_can.c...
 compiling foc_spi2_link.c...
+compiling gpio.c...
+compiling tim.c...
+compiling main.c...
+compiling foc_control.c...
+compiling spi.c...
+compiling stm32g4xx_it.c...
 linking...
-Program Size: Code=28632 RO-data=600 RW-data=16 ZI-data=2928  
+Program Size: Code=26494 RO-data=618 RW-data=144 ZI-data=2840  
 FromELF: creating hex file...
-"ROBOCUP\ROBOCUP.axf" - 0 Error(s), 0 Warning(s).
+"ROBOCUP\ROBOCUP.axf" - 0 Error(s), 1 Warning(s).
 
 <h2>Software Packages used:</h2>
 
 Package Vendor: ARM
-                https://www.keil.com/pack/ARM.CMSIS.6.3.0.pack
-                ARM::CMSIS@6.3.0
-                CMSIS (Common Microcontroller Software Interface Standard)
-   * Component: CORE Version: 6.2.0
+                http://www.keil.com/pack/ARM.CMSIS.4.2.0.pack
+                ARM.CMSIS.4.2.0
+                CMSIS (Cortex Microcontroller Software Interface Standard)
+   * Component: CORE Version: 3.40.0
 
 Package Vendor: Keil
-                https://www.keil.com/pack/Keil.STM32G4xx_DFP.2.2.0.pack
-                Keil::STM32G4xx_DFP@2.2.0
-                STMicroelectronics STM32G4 Series Device Support
+                https://www.keil.com/pack/Keil.STM32G4xx_DFP.1.5.0.pack
+                Keil.STM32G4xx_DFP.1.5.0
+                STMicroelectronics STM32G4 Series Device Support, Drivers and Examples
 
 <h2>Collection of Component include folders:</h2>
   ./RTE/_ROBOCUP
-  F:/Keil_v5/ARM/Packs/ARM/CMSIS/6.3.0/CMSIS/Core/Include
+  D:/Keil_v5/ARM/Pack/ARM/CMSIS/4.2.0/CMSIS/Include
+  D:/Keil_v5/ARM/Pack/Keil/STM32G4xx_DFP/1.5.0/Drivers/CMSIS/Device/ST/STM32G4xx/Include
 
 <h2>Collection of Component Files used:</h2>
 
-   * Component: ARM::CMSIS:CORE@6.2.0
-      Include file:  CMSIS/Core/Include/tz_context.h
-Build Time Elapsed:  00:00:01
+   * Component: ARM::CMSIS:CORE:3.40.0
+      Source file:   CMSIS/UserCodeTemplates/ARM/ITM_Retarget.c
+Build Time Elapsed:  00:00:08
 </pre>
 </body>
 </html>

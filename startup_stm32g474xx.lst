@@ -818,11 +818,13 @@ ARM Macro Assembler    Page 13
               00000400 
               00000200 
               00000000 
-Command Line: --debug --xref --diag_suppress=9931 --cpu=Cortex-M4.fp --apcs=int
-erwork --depend=robocup\startup_stm32g474xx.d -orobocup\startup_stm32g474xx.o -
-IF:\ROBOCUP\SRC-FOC\RTE -IF:\Keil\ARM\PACK\ARM\CMSIS\4.2.0\CMSIS\Include --pred
-efine="__UVISION_VERSION SETA 514" --predefine="_RTE_ SETA 1" --list=startup_st
-m32g474xx.lst startup_stm32g474xx.s
+Command Line: --debug --xref --diag_suppress=9931 --cpu=Cortex-M4.fp.sp --apcs=
+interwork --depend=robocup\startup_stm32g474xx.d -orobocup\startup_stm32g474xx.
+o -I.\RTE\_ROBOCUP -ID:\Keil_v5\ARM\Pack\ARM\CMSIS\4.2.0\CMSIS\Include -ID:\Kei
+l_v5\ARM\Pack\Keil\STM32G4xx_DFP\1.5.0\Drivers\CMSIS\Device\ST\STM32G4xx\Includ
+e --predefine="__UVISION_VERSION SETA 538" --predefine="_RTE_ SETA 1" --predefi
+ne="STM32G474xx SETA 1" --predefine="_RTE_ SETA 1" --list=startup_stm32g474xx.l
+st startup_stm32g474xx.s
 
 
 
@@ -2124,4 +2126,4 @@ Symbol: __use_two_region_memory
       None
 Comment: __use_two_region_memory unused
 3 symbols
-467 symbols in table
+468 symbols in table
