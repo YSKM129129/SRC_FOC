@@ -13,7 +13,12 @@
 #define MAX_MOD 0.90f
 #define MAX_PHASE_CURRENT 3.0f
 #define CURRENT_OUTPUT_LIMIT 0.05f
-#define ALIGN_CURRENT 0.8f
+#define ALIGN_VOLTAGE 0.04f
+#define FOC_CALIBRATION_ADDRESS 0x0801F000UL
+#define FOC_CALIBRATION_MAGIC 0x464F4342UL
+#define FOC_CALIBRATION_CHECK 0xA53C91E7UL
+/* Set to 1 for one firmware run to replace the stored encoder calibration. */
+#define FOC_FORCE_ENCODER_CALIBRATION 0U
 
 typedef struct { float kp, ki, integ, out; } pi_t;
 static volatile float angle, angle_multi, speed, iq, id, iq_ref_amp;
@@ -34,8 +39,8 @@ static float encoder_direction = 1.0f, electrical_offset;
 static float enc_prev, enc_turns;
 /* 339285: Rll=0.464 ohm, Lll=0.322 mH. Conservative current-loop
    tuning for a 20 kHz update rate and approximately 16 V DC bus. */
-static pi_t pi_q = {0.04f, 0.0029f, 0, 0};
-static pi_t pi_d = {0.04f, 0.0029f, 0, 0};
+static pi_t pi_q = {1.2f, 0.06f, 0, 0};
+static pi_t pi_d = {1.2f, 0.06f, 0, 0};
 
 static void led_set(int led, uint32_t on)
 {
@@ -224,6 +229,80 @@ static void encoder_update(uint8_t high, uint8_t low)
 static float clamp(float x,float lo,float hi){return x<lo?lo:(x>hi?hi:x);}
 static float wrap(float x){ while(x>FOC_PI)x-=FOC_2PI; while(x<-FOC_PI)x+=FOC_2PI; return x; }
 
+static uint32_t calibration_checksum(uint32_t direction, uint32_t offset)
+{
+    return FOC_CALIBRATION_MAGIC ^ direction ^ offset ^ FOC_CALIBRATION_CHECK;
+}
+
+static uint32_t calibration_load(void)
+{
+    const volatile uint32_t *words=(const volatile uint32_t *)FOC_CALIBRATION_ADDRESS;
+    union { uint32_t bits; float value; } offset;
+    uint32_t direction=words[1];
+    offset.bits=words[2];
+
+    if (words[0] != FOC_CALIBRATION_MAGIC ||
+        words[3] != calibration_checksum(direction,offset.bits) ||
+        (direction != 1U && direction != 0xffffffffU) ||
+        !isfinite(offset.value) || fabsf(offset.value) > FOC_PI)
+    {
+        return 0U;
+    }
+
+    encoder_direction=direction == 1U ? 1.0f : -1.0f;
+    electrical_offset=offset.value;
+    return 1U;
+}
+
+static uint32_t calibration_save(void)
+{
+    union { uint32_t bits; float value; } offset;
+    FLASH_EraseInitTypeDef erase={0};
+    uint32_t page_error=0xffffffffU;
+    uint32_t direction=encoder_direction > 0.0f ? 1U : 0xffffffffU;
+    uint32_t check;
+    uint64_t first,second;
+    HAL_StatusTypeDef status;
+
+    offset.value=electrical_offset;
+    check=calibration_checksum(direction,offset.bits);
+    first=(uint64_t)FOC_CALIBRATION_MAGIC | ((uint64_t)direction << 32);
+    second=(uint64_t)offset.bits | ((uint64_t)check << 32);
+
+    erase.TypeErase=FLASH_TYPEERASE_PAGES;
+    erase.NbPages=1U;
+#if defined(FLASH_OPTR_DBANK)
+    if ((FLASH->OPTR & FLASH_OPTR_DBANK) != 0U)
+    {
+        erase.Banks=FLASH_BANK_2;
+        erase.Page=(FOC_CALIBRATION_ADDRESS-FLASH_BASE-FLASH_BANK_SIZE)/FLASH_PAGE_SIZE;
+    }
+    else
+    {
+        erase.Banks=FLASH_BANK_1;
+        erase.Page=(FOC_CALIBRATION_ADDRESS-FLASH_BASE)/FLASH_PAGE_SIZE_128_BITS;
+    }
+#else
+    erase.Banks=FLASH_BANK_1;
+    erase.Page=(FOC_CALIBRATION_ADDRESS-FLASH_BASE)/FLASH_PAGE_SIZE;
+#endif
+
+    if (HAL_FLASH_Unlock() != HAL_OK) { return 0U; }
+    status=HAL_FLASHEx_Erase(&erase,&page_error);
+    if (status == HAL_OK)
+    {
+        status=HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD,
+                                 FOC_CALIBRATION_ADDRESS,first);
+    }
+    if (status == HAL_OK)
+    {
+        status=HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD,
+                                 FOC_CALIBRATION_ADDRESS+8U,second);
+    }
+    HAL_FLASH_Lock();
+    return status == HAL_OK && calibration_load();
+}
+
 static void pwm(float a,float b,float c){
  a=clamp(a,0,MAX_MOD); b=clamp(b,0,MAX_MOD); c=clamp(c,0,MAX_MOD);
  /* PWM2: high-side duty = 1 - CCR/ARR. All low sides conduct at CNT=0. */
@@ -236,9 +315,19 @@ static void svpwm(float theta,float vd,float vq)
 {
     float al=vd*cosf(theta)-vq*sinf(theta),
             be=vd*sinf(theta)+vq*cosf(theta);
-    float u=0.5f+0.5f*al,
-            v=0.5f+0.5f*(-0.5f*al+0.8660254f*be),
-            w=0.5f+0.5f*(-0.5f*al-0.8660254f*be);
+    float u_phase=al,
+          v_phase=-0.5f*al+0.8660254f*be,
+          w_phase=-0.5f*al-0.8660254f*be;
+
+    /* Continuous, symmetric SVPWM. Injecting the same zero-sequence voltage
+       into all three phases is equivalent to centering T0 in each PWM cycle. */
+    float phase_max=fmaxf(u_phase,fmaxf(v_phase,w_phase));
+    float phase_min=fminf(u_phase,fminf(v_phase,w_phase));
+    float zero_sequence=-0.5f*(phase_max+phase_min);
+
+    float u=0.5f+0.5f*(u_phase+zero_sequence),
+          v=0.5f+0.5f*(v_phase+zero_sequence),
+          w=0.5f+0.5f*(w_phase+zero_sequence);
     pwm(u,v,w);
 }
 void FOC_SetTorque(float iq_amp)
@@ -405,35 +494,46 @@ void FOC_Init(void)
         }
         HAL_Delay(1U);
     }
-    align_theta = 0.0f;
-    foc_state = FOC_STATE_ALIGNING;
-    if (!align_wait(800U)) { return; }
-    float initial_angle = angle;
-    /* Half an electrical turn is 22.5 mechanical degrees for this motor. */
-    for (uint32_t step = 1U; step <= 1500U; ++step)
+    if (FOC_FORCE_ENCODER_CALIBRATION || !calibration_load())
     {
-        align_theta = FOC_PI * (float)step / 1500.0f;
-        if (!align_wait(1U)) { return; }
-    }
-    if (!align_wait(500U)) { return; }
-    float delta = wrap(angle - initial_angle);
-    float expected = FOC_PI / FOC_MOTOR_POLE_PAIRS;
-    if (fabsf(delta) < 0.7f*expected || fabsf(delta) > 1.3f*expected)
-    {
-        stop_fault(FOC_FAULT_ALIGNMENT);
-        Blink_LED(LED_5V);
-        HAL_Delay(700U);
-        if (Blink_GDF_Detail() == 0U)
+        align_theta = 0.0f;
+        foc_state = FOC_STATE_ALIGNING;
+        if (!align_wait(800U)) { return; }
+        float initial_angle = angle;
+        /* Determine direction once by sweeping an open-loop stator field over
+           half an electrical turn. The alignment path deliberately bypasses
+           the current PI and its as-yet-uncalibrated Park angle. */
+        for (uint32_t step = 1U; step <= 1500U; ++step)
         {
-            HAL_Delay(700U);
-            Blink_Alignment_Detail(delta, expected);
+            align_theta = FOC_PI * (float)step / 1500.0f;
+            if (!align_wait(1U)) { return; }
         }
-        return;
+        if (!align_wait(500U)) { return; }
+        float delta = wrap(angle - initial_angle);
+        float expected = FOC_PI / FOC_MOTOR_POLE_PAIRS;
+        /* Reject a sweep too small to establish encoder direction reliably. */
+        if (fabsf(delta) < 0.25f*expected)
+        {
+            stop_fault(FOC_FAULT_ALIGNMENT);
+            Blink_LED(LED_5V);
+            HAL_Delay(700U);
+            if (Blink_GDF_Detail() == 0U)
+            {
+                HAL_Delay(700U);
+                Blink_Alignment_Detail(delta, expected);
+            }
+            return;
+        }
+        encoder_direction = delta > 0.0f ? 1.0f : -1.0f;
+        /* The rotor is held at the final commanded electrical angle before
+           this sample, so capture the offset at the same operating point. */
+        electrical_offset = wrap(encoder_direction * angle * FOC_MOTOR_POLE_PAIRS - FOC_PI);
+
+        /* Stop the bridge before erasing/programming the calibration page. */
+        HAL_GPIO_WritePin(DRV_cotr_GPIO_Port, DRV_cotr_Pin, GPIO_PIN_RESET);
+        foc_state = FOC_STATE_CALIBRATING;
+        (void)calibration_save();
     }
-    encoder_direction = delta > 0.0f ? 1.0f : -1.0f;
-    /* The rotor is held at the final commanded electrical angle before this
-       sample, so publish the offset from the same operating point. */
-    electrical_offset = wrap(encoder_direction * angle * FOC_MOTOR_POLE_PAIRS - FOC_PI);
     /* Drop INL while changing frames/resetting PI, so an ISR cannot re-enable
        the bridge with partially published calibration data. */
     uint32_t primask = __get_PRIMASK();
@@ -572,21 +672,29 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *h)
     }
     else { overcurrent_count = 0U; }
 
-    // Clark transform
-    float i_alpha = iu - 0.5f*iv - 0.5f*iw;
-    float i_beta = 0.8660254f*iv - 0.8660254f*iw;
+    /* Amplitude-invariant Clarke transform for two-shunt sampling.
+       With iw=-iu-iv, this is the reduced form of the full 2/3 transform. */
+    float i_alpha=iu;
+    float i_beta=0.5773502692f*(iu+2.0f*iv);
 
     uint32_t aligning = foc_state == FOC_STATE_ALIGNING;
     float theta = aligning ? align_theta :
         wrap(encoder_direction*angle*FOC_MOTOR_POLE_PAIRS-electrical_offset);
     float c=cosf(theta), s=sinf(theta);
 
-    // Park transform
+    /* Park transform. This sign convention is the inverse of svpwm() above. */
     id=i_alpha*c+i_beta*s;
     iq=-i_alpha*s+i_beta*c;
 
-    float eq=(aligning ? 0.0f : iq_ref_amp)-iq;
-    float ed=(aligning ? ALIGN_CURRENT : 0.0f)-id;
+    if (aligning)
+    {
+        svpwm(theta,ALIGN_VOLTAGE,0.0f);
+        HAL_GPIO_WritePin(DRV_cotr_GPIO_Port, DRV_cotr_Pin, GPIO_PIN_SET);
+        return;
+    }
+
+    float eq=iq_ref_amp-iq;
+    float ed=-id;
 
     // PI control
     pi_q.integ=clamp(pi_q.integ+pi_q.ki*eq,-CURRENT_OUTPUT_LIMIT,CURRENT_OUTPUT_LIMIT);

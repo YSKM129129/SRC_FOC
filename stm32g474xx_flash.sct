@@ -1,5 +1,5 @@
-LR_IROM1 0x8000000 0x00020000  {  ; load_region size_region
-  ER_IROM1 0x8000000 0x00020000  {  ; load address = excetion address
+LR_IROM1 0x8000000 0x0001F000  {  ; load_region size_region
+  ER_IROM1 0x8000000 0x0001F000  {  ; load address = excetion address
    *.o (RESET, +First)
    *(InRoot$$Sections)
    .ANY (+XO)
