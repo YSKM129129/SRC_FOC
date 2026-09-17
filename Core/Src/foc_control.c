@@ -52,8 +52,8 @@ static float encoder_direction = 1.0f, electrical_offset;
 static float enc_prev, enc_turns;
 /* 330285: Rll=0.464 ohm, Lll=0.322 mH. Conservative current-loop
    tuning for a 20 kHz update rate and approximately 16 V DC bus. */
-static pi_t pi_q = {0.04f, 0.0029f, 0, 0};
-static pi_t pi_d = {0.04f, 0.0029f, 0, 0};
+static pi_t pi_q = {0.1f, 0.003f, 0, 0};
+static pi_t pi_d = {0.1f, 0.003f, 0, 0};
 
 static void led_set(int led, uint32_t on)
 {
