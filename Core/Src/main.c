@@ -10,13 +10,21 @@
 #include "tim.h"
 #include "usart.h"
 
-/* Simulate the received Iq command in 10 mA/count.
-   100 means 1.00 A; -100 means -1.00 A.
-   Set FOC_DEBUG_FAKE_COMMAND to 0 to use real CAN/SPI2 commands. */
+/* Simulated command frame. Set FOC_DEBUG_FAKE_COMMAND to 0 to use CAN/SPI2.
+   MODE selects the physical unit of VALUE:
+   - FOC_MODE_TORQUE: 1 mN*m/count; 75 means +75 mN*m.
+   - FOC_MODE_SPEED:  1 rpm/count; 1000 means +1000 rpm. */
 #ifndef FOC_DEBUG_FAKE_COMMAND
 #define FOC_DEBUG_FAKE_COMMAND 1
 #endif
-#define FOC_DEBUG_IQ_COMMAND   300
+#define FOC_DEBUG_COMMAND_MODE  FOC_MODE_SPEED
+#define FOC_DEBUG_COMMAND_VALUE 1000
+
+static const FOC_CommandFrame debug_command =
+{
+    .mode = FOC_DEBUG_COMMAND_MODE,
+    .value = FOC_DEBUG_COMMAND_VALUE
+};
 
 /* System clock configuration generated for the STM32G474. */
 void SystemClock_Config(void);
@@ -52,7 +60,7 @@ int main(void)
     /* Start PWM, current sampling, encoder feedback and FOC control. */
     FOC_Init();
 #if FOC_DEBUG_FAKE_COMMAND
-    FOC_SetTorque((float)FOC_DEBUG_IQ_COMMAND * 0.01f);
+    (void)FOC_ApplyCommandFrame(&debug_command);
 #endif
 
     /* Main-loop work is handled by interrupts and low-rate telemetry links. */
@@ -66,8 +74,7 @@ int main(void)
             last_telemetry_ms = HAL_GetTick();
             FOC_PollDriverFault();
 #if FOC_DEBUG_FAKE_COMMAND
-            /* Same 10 mA/count conversion as a received command packet. */
-            FOC_SetTorque((float)FOC_DEBUG_IQ_COMMAND * 0.01f);
+            (void)FOC_ApplyCommandFrame(&debug_command);
 #else
             (void)FOC_Can_SendTelemetry();
             (void)FOC_Spi2_Exchange();

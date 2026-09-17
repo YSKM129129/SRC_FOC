@@ -1,4 +1,5 @@
 ﻿#include "foc_control.h"
+#include "adc.h"
 #include "gpio.h"
 #include "DRV8353.h"
 #include <math.h>
@@ -9,14 +10,25 @@
    the schematic ties those INA240 outputs to the same nets. */
 #define AMP_GAIN 40.0f
 #define VREF 3.3f
+#define DC_BUS_NOMINAL_V 16.0f
+#define DC_BUS_DIVIDER_TOP_OHM 100000.0f
+#define DC_BUS_DIVIDER_BOTTOM_OHM 7500.0f
+#define DC_BUS_MIN_VALID_V 5.0f
+#define DC_BUS_MAX_VALID_V 40.0f
 #define PWM_PERIOD 2125U
 #define MAX_MOD 0.90f
-#define MAX_IQ_CURRENT 3.5f
-#define PHASE_OVERCURRENT_LIMIT 5.0f
-#define CURRENT_OUTPUT_LIMIT 0.6f
+#define MAX_IQ_CURRENT 10.0f
+#define PHASE_OVERCURRENT_LIMIT 10.0f
+#define CURRENT_OUTPUT_LIMIT 0.8f
 #define CURRENT_LOOP_HZ 20000.0f
 #define IQ_SLEW_RATE_A_PER_S 30.0f
 #define CURRENT_SENSE_BLANK_SAMPLES 20U
+#define MOTOR_TORQUE_CONSTANT_MNM_PER_A 25.1f
+#define MAX_SPEED_COMMAND_RPM 9000.0f
+#define RPM_TO_RAD_PER_SEC (FOC_2PI / 60.0f)
+#define SPEED_LOOP_HZ 1000.0f
+#define SPEED_REFERENCE_SLEW_RPM_PER_S 3000.0f
+#define SPEED_LOOP_CURRENT_LIMIT 2.0f
 #define ALIGN_VOLTAGE 0.04f
 #define FOC_CALIBRATION_ADDRESS 0x0801F000UL
 #define FOC_CALIBRATION_MAGIC 0x464F4342UL
@@ -26,6 +38,11 @@
 
 typedef struct { float kp, ki, integ, out; } pi_t;
 static volatile float angle, angle_multi, speed, iq, id, iq_ref_amp, iq_ref_target;
+static volatile float speed_target_rad_s, speed_ref_rad_s;
+static volatile float dc_bus_voltage = DC_BUS_NOMINAL_V;
+static volatile float current_pi_bus_scale = 1.0f;
+static volatile uint32_t dc_bus_voltage_valid;
+static volatile FOC_ControlMode control_mode = FOC_MODE_TORQUE;
 /* MT6816: two separate 16-clock frames, each sent as two 8-bit bytes. */
 static uint8_t enc_rx[2];
 static uint8_t enc_tx[2] = {0x83U, 0x00U};
@@ -54,6 +71,58 @@ static float enc_prev, enc_turns;
    tuning for a 20 kHz update rate and approximately 16 V DC bus. */
 static pi_t pi_q = {0.1f, 0.003f, 0, 0};
 static pi_t pi_d = {0.1f, 0.003f, 0, 0};
+/* 1-kHz mechanical speed loop. Output is q-axis current in amperes.
+   kp unit: A/(rad/s); ki is the per-sample integral coefficient. */
+static pi_t pi_speed = {0.02f, 0.00015f, 0, 0};
+
+static float clamp(float x, float lo, float hi);
+
+static uint32_t update_bus_voltage(void)
+{
+    uint32_t voltage_raw;
+    float measured;
+
+    if (HAL_ADC_Start(&hadc2) != HAL_OK) { return 0U; }
+
+    /* ADC2 rank 1 is the temperature input; rank 2 is ADC_V. */
+    if (HAL_ADC_PollForConversion(&hadc2, 2U) != HAL_OK)
+    {
+        (void)HAL_ADC_Stop(&hadc2);
+        return 0U;
+    }
+    (void)HAL_ADC_GetValue(&hadc2);
+
+    if (HAL_ADC_PollForConversion(&hadc2, 2U) != HAL_OK)
+    {
+        (void)HAL_ADC_Stop(&hadc2);
+        return 0U;
+    }
+    voltage_raw = HAL_ADC_GetValue(&hadc2);
+    (void)HAL_ADC_Stop(&hadc2);
+
+    measured = (float)voltage_raw * VREF / ADC_FS *
+               (DC_BUS_DIVIDER_TOP_OHM + DC_BUS_DIVIDER_BOTTOM_OHM) /
+               DC_BUS_DIVIDER_BOTTOM_OHM;
+    if (!isfinite(measured) || measured < DC_BUS_MIN_VALID_V ||
+        measured > DC_BUS_MAX_VALID_V)
+    {
+        return 0U;
+    }
+
+    /* The first sample must take effect before PWM starts. Later samples are
+       lightly filtered because this value only compensates slow bus changes. */
+    if (!dc_bus_voltage_valid)
+    {
+        dc_bus_voltage = measured;
+        dc_bus_voltage_valid = 1U;
+    }
+    else
+    {
+        dc_bus_voltage = 0.2f * measured + 0.8f * dc_bus_voltage;
+    }
+    current_pi_bus_scale = clamp(DC_BUS_NOMINAL_V / dc_bus_voltage, 0.4f, 1.5f);
+    return 1U;
+}
 
 static void led_set(int led, uint32_t on)
 {
@@ -173,6 +242,10 @@ static void stop_fault(uint32_t fault)
     foc_state = FOC_STATE_FAULT;
     iq_ref_target = 0.0f;
     iq_ref_amp = 0.0f;
+    speed_target_rad_s = 0.0f;
+    speed_ref_rad_s = 0.0f;
+    pi_speed.integ = 0.0f;
+    pi_speed.out = 0.0f;
     enc_sampling_enabled = 0U;
     HAL_GPIO_WritePin(DRV_cotr_GPIO_Port, DRV_cotr_Pin, GPIO_PIN_RESET);
 }
@@ -348,15 +421,65 @@ static void svpwm(float theta,float vd,float vq)
           w=0.5f+0.5f*(w_phase+zero_sequence);
     pwm(u,v,w);
 }
-void FOC_SetTorque(float iq_amp)
+void FOC_SetTorqueMilliNewtonMeter(float torque_mnm)
 {
-    iq_ref_target=isfinite(iq_amp)?clamp(iq_amp,-MAX_IQ_CURRENT,MAX_IQ_CURRENT):0.0f;
+    float iq_command = isfinite(torque_mnm) ?
+        torque_mnm / MOTOR_TORQUE_CONSTANT_MNM_PER_A : 0.0f;
+    uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    if (control_mode != FOC_MODE_TORQUE)
+    {
+        pi_speed.integ = 0.0f;
+        pi_speed.out = 0.0f;
+    }
+    control_mode = FOC_MODE_TORQUE;
+    speed_target_rad_s = 0.0f;
+    speed_ref_rad_s = 0.0f;
+    iq_ref_target = clamp(iq_command, -MAX_IQ_CURRENT, MAX_IQ_CURRENT);
+    __set_PRIMASK(primask);
+}
+
+void FOC_SetSpeedRPM(float speed_rpm)
+{
+    float limited_rpm = isfinite(speed_rpm) ?
+        clamp(speed_rpm, -MAX_SPEED_COMMAND_RPM, MAX_SPEED_COMMAND_RPM) : 0.0f;
+    uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    if (control_mode != FOC_MODE_SPEED)
+    {
+        pi_speed.integ = 0.0f;
+        pi_speed.out = 0.0f;
+        iq_ref_target = 0.0f;
+        /* Start the command ramp from the actual mechanical speed so that a
+           mode change while rotating does not first command an abrupt brake. */
+        speed_ref_rad_s = encoder_direction * speed;
+    }
+    speed_target_rad_s = limited_rpm * RPM_TO_RAD_PER_SEC;
+    control_mode = FOC_MODE_SPEED;
+    __set_PRIMASK(primask);
+}
+
+uint32_t FOC_ApplyCommandFrame(const FOC_CommandFrame *command)
+{
+    if (command == NULL) { return 0U; }
+    if (command->mode == FOC_MODE_TORQUE)
+    {
+        FOC_SetTorqueMilliNewtonMeter((float)command->value);
+        return 1U;
+    }
+    if (command->mode == FOC_MODE_SPEED)
+    {
+        FOC_SetSpeedRPM((float)command->value);
+        return 1U;
+    }
+    return 0U;
 }
 
 void FOC_PollDriverFault(void)
 {
     static uint32_t fault_reported;
     uint32_t detail = 0U;
+    (void)update_bus_voltage();
     if (fault_reported) { return; }
 
     if (foc_state == FOC_STATE_FAULT)
@@ -478,6 +601,14 @@ static uint32_t align_wait(uint32_t ms)
 
 void FOC_Init(void)
 {
+    /* ADC_V keeps the current-loop dynamics independent of supply voltage.
+       Sample it before PWM can energize the motor. */
+    if (HAL_ADCEx_Calibration_Start(&hadc2, ADC_SINGLE_ENDED) != HAL_OK ||
+        !update_bus_voltage())
+    {
+        stop_fault(FOC_FAULT_STARTUP);
+        return;
+    }
     if (DRV835X_Init() != HAL_OK)
     { 
         stop_fault(FOC_FAULT_DRIVER);
@@ -562,9 +693,13 @@ void FOC_Init(void)
     HAL_GPIO_WritePin(DRV_cotr_GPIO_Port, DRV_cotr_Pin, GPIO_PIN_RESET);
     iq_ref_amp = 0.0f;
     iq_ref_target = 0.0f;
+    speed_target_rad_s = 0.0f;
+    speed_ref_rad_s = 0.0f;
     current_sense_blank_samples = CURRENT_SENSE_BLANK_SAMPLES;
     pi_q.integ = 0.0f;
     pi_d.integ = 0.0f;
+    pi_speed.integ = 0.0f;
+    pi_speed.out = 0.0f;
     if (foc_state != FOC_STATE_FAULT) { foc_state = FOC_STATE_RUNNING; }
     __set_PRIMASK(primask);
 }
@@ -572,6 +707,8 @@ float FOC_GetAngle(void){return angle_multi;}
 float FOC_GetSpeed(void){return encoder_direction*speed;}
 float FOC_GetIq(void){return iq;}
 float FOC_GetId(void){return id;}
+float FOC_GetBusVoltage(void){return dc_bus_voltage;}
+FOC_ControlMode FOC_GetControlMode(void){return control_mode;}
 uint16_t FOC_GetEncoderRawAngle(void){return enc_raw;}
 uint32_t FOC_GetEncoderStatus(void){return enc_status;}
 uint32_t FOC_GetState(void){return foc_state;}
@@ -626,6 +763,42 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *h)
             if (have_last) { speed=0.15f*wrap(current-last)/0.001f+0.85f*speed; }
             last=current;
             have_last=1U;
+
+            if (foc_state == FOC_STATE_RUNNING && control_mode == FOC_MODE_SPEED)
+            {
+                const float speed_step = SPEED_REFERENCE_SLEW_RPM_PER_S *
+                                         RPM_TO_RAD_PER_SEC / SPEED_LOOP_HZ;
+                if (speed_ref_rad_s < speed_target_rad_s)
+                {
+                    speed_ref_rad_s = fminf(speed_ref_rad_s + speed_step,
+                                            speed_target_rad_s);
+                }
+                else if (speed_ref_rad_s > speed_target_rad_s)
+                {
+                    speed_ref_rad_s = fmaxf(speed_ref_rad_s - speed_step,
+                                            speed_target_rad_s);
+                }
+
+                float speed_error = speed_ref_rad_s - encoder_direction * speed;
+                float proportional = pi_speed.kp * speed_error;
+                float integral_candidate = clamp(pi_speed.integ +
+                                                   pi_speed.ki * speed_error,
+                                                   -SPEED_LOOP_CURRENT_LIMIT,
+                                                   SPEED_LOOP_CURRENT_LIMIT);
+                float output_candidate = proportional + integral_candidate;
+
+                /* Do not integrate farther into current saturation. Integration
+                   remains active when the error helps the output leave it. */
+                if (!((output_candidate > SPEED_LOOP_CURRENT_LIMIT && speed_error > 0.0f) ||
+                      (output_candidate < -SPEED_LOOP_CURRENT_LIMIT && speed_error < 0.0f)))
+                {
+                    pi_speed.integ = integral_candidate;
+                }
+                pi_speed.out = clamp(proportional + pi_speed.integ,
+                                     -SPEED_LOOP_CURRENT_LIMIT,
+                                     SPEED_LOOP_CURRENT_LIMIT);
+                iq_ref_target = pi_speed.out;
+            }
         }
 }
 
@@ -738,7 +911,7 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *h)
 
     if (aligning)
     {
-        svpwm(theta,ALIGN_VOLTAGE,0.0f);
+        svpwm(theta, ALIGN_VOLTAGE * current_pi_bus_scale, 0.0f);
         HAL_GPIO_WritePin(DRV_cotr_GPIO_Port, DRV_cotr_Pin, GPIO_PIN_SET);
         return;
     }
@@ -757,12 +930,15 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *h)
     float ed=-id;
 
     // PI control
-    float q_proportional=pi_q.kp*eq;
-    float d_proportional=pi_d.kp*ed;
-    pi_q.integ=clamp(pi_q.integ+pi_q.ki*eq,-CURRENT_OUTPUT_LIMIT,CURRENT_OUTPUT_LIMIT);
+    /* PI gains were tuned at DC_BUS_NOMINAL_V. Since PI output is normalized
+       PWM modulation, scale it inversely with the measured DC bus voltage. */
+    float bus_scale = current_pi_bus_scale;
+    float q_proportional=pi_q.kp*eq*bus_scale;
+    float d_proportional=pi_d.kp*ed*bus_scale;
+    pi_q.integ=clamp(pi_q.integ+pi_q.ki*eq*bus_scale,-CURRENT_OUTPUT_LIMIT,CURRENT_OUTPUT_LIMIT);
     pi_q.out=clamp(q_proportional+pi_q.integ,-CURRENT_OUTPUT_LIMIT,CURRENT_OUTPUT_LIMIT);
 
-    pi_d.integ=clamp(pi_d.integ+pi_d.ki*ed,-CURRENT_OUTPUT_LIMIT,CURRENT_OUTPUT_LIMIT);
+    pi_d.integ=clamp(pi_d.integ+pi_d.ki*ed*bus_scale,-CURRENT_OUTPUT_LIMIT,CURRENT_OUTPUT_LIMIT);
     pi_d.out=clamp(d_proportional+pi_d.integ,-CURRENT_OUTPUT_LIMIT,CURRENT_OUTPUT_LIMIT);
 
     /* Limit the combined voltage vector, not each axis independently. This

@@ -25,15 +25,34 @@
 #define LED_5V      1
 #define LED_3V3     2
 
+typedef enum
+{
+    FOC_MODE_TORQUE = 0U,
+    FOC_MODE_SPEED = 1U
+} FOC_ControlMode;
+
+/* Unified command payload:
+   - FOC_MODE_TORQUE: signed value in 1 mN*m/count.
+   - FOC_MODE_SPEED:  signed value in 1 rpm/count. */
+typedef struct
+{
+    FOC_ControlMode mode;
+    int16_t value;
+} FOC_CommandFrame;
+
 void FOC_Init(void);
-/* Set q-axis current in amperes. Positive/negative values select torque direction. */
-void FOC_SetTorque(float iq_amp);
+/* Apply a mode-dependent command payload. Returns 1 when MODE is valid. */
+uint32_t FOC_ApplyCommandFrame(const FOC_CommandFrame *command);
+void FOC_SetTorqueMilliNewtonMeter(float torque_mnm);
+void FOC_SetSpeedRPM(float speed_rpm);
 void FOC_PollDriverFault(void);
 void Blink_LED(int led);
 float FOC_GetAngle(void);
 float FOC_GetSpeed(void);
 float FOC_GetIq(void);
 float FOC_GetId(void);
+float FOC_GetBusVoltage(void);
+FOC_ControlMode FOC_GetControlMode(void);
 /* Last valid single-turn mechanical angle: 0..16383. */
 uint16_t FOC_GetEncoderRawAngle(void);
 /* Zero means the latest completed angle pair is valid. Transient errors are

@@ -54,13 +54,13 @@ static void prepare_telemetry_frame(void)
     tx_frame[3] = (uint16_t)float_to_i16(FOC_GetSpeed(), 10.0f);
     tx_frame[4] = (uint16_t)float_to_i16(FOC_GetIq(), 100.0f);
     tx_frame[5] = (uint16_t)float_to_i16(FOC_GetId(), 100.0f);
-    tx_frame[6] = 0U; /* Reserved status/fault flags. */
+    tx_frame[6] = (uint16_t)FOC_GetControlMode();
     tx_frame[7] = frame_crc(tx_frame);
 }
 
 static void consume_command_frame(void)
 {
-    int16_t iq_command;
+    FOC_CommandFrame command;
 
     if (rx_frame[0] != FOC_SPI2_MAGIC ||
         rx_frame[7] != frame_crc(rx_frame))
@@ -68,10 +68,12 @@ static void consume_command_frame(void)
         return;
     }
 
-    /* Main MCU command: word 2 is signed Iq in 10 mA/count. */
-    iq_command = (int16_t)rx_frame[2];
-    FOC_SetTorque((float)iq_command * 0.01f);
-    rx_count++;
+    /* Main MCU command:
+       word 1 MODE: 0=torque, 1=speed.
+       word 2 signed VALUE: 1 mN*m/count or 1 rpm/count according to MODE. */
+    command.mode = (FOC_ControlMode)rx_frame[1];
+    command.value = (int16_t)rx_frame[2];
+    if (FOC_ApplyCommandFrame(&command)) { rx_count++; }
 }
 
 HAL_StatusTypeDef FOC_Spi2_Exchange(void)

@@ -122,8 +122,12 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
          header.Identifier == FOC_CAN_BROADCAST_COMMAND_ID) &&
         header.DataLength >= FDCAN_DLC_BYTES_4)
     {
-        /* Bytes 2..3 are signed Iq in 10 mA/count, little-endian. */
-        int16_t iq_command = foc_can_read_i16(&data[2]);
-        FOC_SetTorque((float)iq_command * 0.01f);
+        FOC_CommandFrame command;
+        /* Command payload (little-endian):
+           byte 0 MODE: 0=torque, 1=speed; byte 1 reserved.
+           bytes 2..3 VALUE: 1 mN*m/count or 1 rpm/count according to MODE. */
+        command.mode = (FOC_ControlMode)data[0];
+        command.value = foc_can_read_i16(&data[2]);
+        (void)FOC_ApplyCommandFrame(&command);
     }
 }
