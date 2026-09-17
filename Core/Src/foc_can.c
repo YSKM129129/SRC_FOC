@@ -8,6 +8,8 @@
     (FOC_CAN_COMMAND_BASE + FOC_CAN_NODE_ID)
 #define FOC_CAN_TELEMETRY_ID \
     (FOC_CAN_TELEMETRY_BASE + FOC_CAN_NODE_ID)
+#define FOC_CAN_STATUS_ID \
+    (FOC_CAN_STATUS_BASE + FOC_CAN_NODE_ID)
 #define FOC_CAN_BROADCAST_COMMAND_ID \
     (FOC_CAN_COMMAND_BASE + 0x0FU)
 
@@ -88,6 +90,41 @@ HAL_StatusTypeDef FOC_Can_SendTelemetry(void)
     foc_can_write_i16(&data[6], id_raw);
 
     header.Identifier = FOC_CAN_TELEMETRY_ID;
+    header.IdType = FDCAN_STANDARD_ID;
+    header.TxFrameType = FDCAN_DATA_FRAME;
+    header.DataLength = FDCAN_DLC_BYTES_8;
+    header.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
+    header.BitRateSwitch = FDCAN_BRS_OFF;
+    header.FDFormat = FDCAN_CLASSIC_CAN;
+    header.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
+    header.MessageMarker = 0U;
+
+    return HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &header, data);
+}
+
+HAL_StatusTypeDef FOC_Can_SendStatus(void)
+{
+    FDCAN_TxHeaderTypeDef header = {0};
+    uint8_t data[8] = {0};
+    int16_t iq_ref = (int16_t)(FOC_GetIqReference() * 100.0f);
+    uint16_t bus_mv = (uint16_t)fminf(fmaxf(FOC_GetBusVoltage() * 100.0f,
+                                             0.0f), 65535.0f);
+    uint32_t age_us = FOC_GetAngleAgeUs();
+
+    /* 0x300 + node: Iq reference (0.01 A), bus voltage (0.01 V),
+       state, fault low byte, angle age (0.1 ms), encoder status low byte.
+       This mirrors the diagnostic/status split used by Tigers while keeping
+       the original 0x100 telemetry payload backwards compatible. */
+    foc_can_write_i16(&data[0], iq_ref);
+    data[2] = (uint8_t)(bus_mv & 0xFFU);
+    data[3] = (uint8_t)(bus_mv >> 8);
+    data[4] = (uint8_t)FOC_GetState();
+    data[5] = (uint8_t)FOC_GetFault();
+    age_us = age_us / 100U;
+    data[6] = (uint8_t)(age_us > 255U ? 255U : age_us);
+    data[7] = (uint8_t)FOC_GetEncoderStatus();
+
+    header.Identifier = FOC_CAN_STATUS_ID;
     header.IdType = FDCAN_STANDARD_ID;
     header.TxFrameType = FDCAN_DATA_FRAME;
     header.DataLength = FDCAN_DLC_BYTES_8;

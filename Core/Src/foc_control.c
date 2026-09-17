@@ -23,6 +23,7 @@
 #define CURRENT_LOOP_HZ 20000.0f
 #define IQ_SLEW_RATE_A_PER_S 30.0f
 #define CURRENT_SENSE_BLANK_SAMPLES 20U
+#define FOC_MAX_ANGLE_PREDICTION_US 1000U
 #define MOTOR_TORQUE_CONSTANT_MNM_PER_A 25.1f
 #define MAX_SPEED_COMMAND_RPM 9000.0f
 #define RPM_TO_RAD_PER_SEC (FOC_2PI / 60.0f)
@@ -33,6 +34,7 @@
 #define FOC_CALIBRATION_ADDRESS 0x0801F000UL
 #define FOC_CALIBRATION_MAGIC 0x464F4342UL
 #define FOC_CALIBRATION_CHECK 0xA53C91E7UL
+#define FOC_CALIBRATION_CONFIG_TAG 0x47423438UL /* G474, 8 pole pairs */
 /* Set to 1 for one firmware run to replace the stored encoder calibration. */
 #define FOC_FORCE_ENCODER_CALIBRATION 0U
 
@@ -51,11 +53,18 @@ static volatile uint8_t enc_sampling_enabled, enc_busy;
 static volatile uint16_t enc_raw;
 static volatile uint32_t enc_status = FOC_ENCODER_NOT_READY;
 static volatile uint32_t enc_last_valid_ms;
+static volatile uint32_t enc_last_valid_us;
 volatile uint32_t encoder_bad_frame_count, encoder_spi_error_count;
 volatile uint32_t encoder_fault_status_snapshot, encoder_fault_age_ms;
 static volatile uint32_t foc_state = FOC_STATE_IDLE, foc_fault;
 static volatile uint32_t overcurrent_detail;
 static volatile uint32_t current_sense_blank_samples;
+volatile FOC_RecordSample foc_record_buffer[FOC_RECORD_LENGTH];
+volatile uint16_t foc_record_write_index;
+volatile uint16_t foc_record_count;
+volatile uint8_t foc_record_frozen;
+static volatile uint16_t foc_control_flags;
+static uint32_t foc_cycles_per_us = 170U;
 /* Retained fault snapshot for the debugger. At 40 V/V and 1 milliohm,
    one ADC count is about 20.15 mA. */
 volatile uint16_t foc_fault_adc_u, foc_fault_adc_v;
@@ -77,6 +86,78 @@ static pi_t pi_speed = {0.02f, 0.00015f, 0, 0};
 
 static float clamp(float x, float lo, float hi);
 
+static void foc_time_init(void)
+{
+    uint32_t clock_hz = HAL_RCC_GetSysClockFreq();
+    foc_cycles_per_us = clock_hz >= 1000000U ? clock_hz / 1000000U : 1U;
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CYCCNT = 0U;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+}
+
+static uint32_t foc_time_us(void)
+{
+    return DWT->CYCCNT / foc_cycles_per_us;
+}
+
+static int16_t record_sat_i16(float value, float scale)
+{
+    float scaled = value * scale;
+    if (scaled > 32767.0f) { return INT16_MAX; }
+    if (scaled < -32768.0f) { return INT16_MIN; }
+    return (int16_t)scaled;
+}
+
+static uint16_t record_age_us(uint32_t now)
+{
+    uint32_t age = now - enc_last_valid_us;
+    return age > 65535U ? 65535U : (uint16_t)age;
+}
+
+static void record_control_sample(uint16_t adc_u, uint16_t adc_v,
+                                  float vd, float vq, uint16_t flags)
+{
+    FOC_RecordSample *sample;
+    uint16_t index;
+    uint32_t now;
+
+    if (foc_record_frozen) { return; }
+    index = foc_record_write_index;
+    sample = (FOC_RecordSample *)&foc_record_buffer[index];
+    now = foc_time_us();
+    sample->timestamp_us = now;
+    sample->adc_u = adc_u;
+    sample->adc_v = adc_v;
+    sample->id_ma = (int16_t)record_sat_i16(id, 1000.0f);
+    sample->iq_ma = (int16_t)record_sat_i16(iq, 1000.0f);
+    sample->iq_ref_ma = (int16_t)record_sat_i16(iq_ref_amp, 1000.0f);
+    sample->vd_milli = (int16_t)record_sat_i16(vd, 1000.0f);
+    sample->vq_milli = (int16_t)record_sat_i16(vq, 1000.0f);
+    sample->ccr1 = (uint16_t)__HAL_TIM_GET_COMPARE(&htim1, TIM_CHANNEL_1);
+    sample->ccr2 = (uint16_t)__HAL_TIM_GET_COMPARE(&htim1, TIM_CHANNEL_2);
+    sample->ccr3 = (uint16_t)__HAL_TIM_GET_COMPARE(&htim1, TIM_CHANNEL_3);
+    sample->angle_age_us = record_age_us(now);
+    sample->flags = flags;
+    __DMB();
+    foc_record_write_index = (uint16_t)((index + 1U) % FOC_RECORD_LENGTH);
+    if (foc_record_count < FOC_RECORD_LENGTH) { ++foc_record_count; }
+}
+
+void FOC_RecordClear(void)
+{
+    uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    foc_record_write_index = 0U;
+    foc_record_count = 0U;
+    foc_record_frozen = 0U;
+    __set_PRIMASK(primask);
+}
+
+void FOC_RecordFreeze(void)
+{
+    foc_record_frozen = 1U;
+}
+
 static uint32_t update_bus_voltage(void)
 {
     uint32_t voltage_raw;
@@ -84,14 +165,8 @@ static uint32_t update_bus_voltage(void)
 
     if (HAL_ADC_Start(&hadc2) != HAL_OK) { return 0U; }
 
-    /* ADC2 rank 1 is the temperature input; rank 2 is ADC_V. */
-    if (HAL_ADC_PollForConversion(&hadc2, 2U) != HAL_OK)
-    {
-        (void)HAL_ADC_Stop(&hadc2);
-        return 0U;
-    }
-    (void)HAL_ADC_GetValue(&hadc2);
-
+    /* ADC2 contains only ADC_V. Keeping this to one regular conversion makes
+       the result independent of interrupt latency during a software poll. */
     if (HAL_ADC_PollForConversion(&hadc2, 2U) != HAL_OK)
     {
         (void)HAL_ADC_Stop(&hadc2);
@@ -246,6 +321,7 @@ static void stop_fault(uint32_t fault)
     speed_ref_rad_s = 0.0f;
     pi_speed.integ = 0.0f;
     pi_speed.out = 0.0f;
+    FOC_RecordFreeze();
     enc_sampling_enabled = 0U;
     HAL_GPIO_WritePin(DRV_cotr_GPIO_Port, DRV_cotr_Pin, GPIO_PIN_RESET);
 }
@@ -314,6 +390,7 @@ static void encoder_update(uint8_t high, uint8_t low)
     angle_multi = enc_turns + a;
     enc_initialized = 1U;
     enc_last_valid_ms = HAL_GetTick();
+    enc_last_valid_us = foc_time_us();
     enc_status = 0U;
 }
 
@@ -322,7 +399,8 @@ static float wrap(float x){ while(x>FOC_PI)x-=FOC_2PI; while(x<-FOC_PI)x+=FOC_2P
 
 static uint32_t calibration_checksum(uint32_t direction, uint32_t offset)
 {
-    return FOC_CALIBRATION_MAGIC ^ direction ^ offset ^ FOC_CALIBRATION_CHECK;
+    return FOC_CALIBRATION_MAGIC ^ FOC_CALIBRATION_CONFIG_TAG ^
+           direction ^ offset ^ FOC_CALIBRATION_CHECK;
 }
 
 static uint32_t calibration_load(void)
@@ -601,6 +679,8 @@ static uint32_t align_wait(uint32_t ms)
 
 void FOC_Init(void)
 {
+    foc_time_init();
+    FOC_RecordClear();
     /* ADC_V keeps the current-loop dynamics independent of supply voltage.
        Sample it before PWM can energize the motor. */
     if (HAL_ADCEx_Calibration_Start(&hadc2, ADC_SINGLE_ENDED) != HAL_OK ||
@@ -664,7 +744,11 @@ void FOC_Init(void)
         float delta = wrap(angle - initial_angle);
         float expected = FOC_PI / FOC_MOTOR_POLE_PAIRS;
         /* Reject a sweep too small to establish encoder direction reliably. */
-        if (fabsf(delta) < 0.25f*expected)
+        /* A sweep that is too small cannot establish direction; an excessive
+           sweep indicates a slipping rotor, wrong pole-pair count, or a bad
+           encoder frame. Accept only a bounded fraction of the expected
+           half-electrical-turn movement. */
+        if (fabsf(delta) < 0.50f*expected || fabsf(delta) > 1.50f*expected)
         {
             stop_fault(FOC_FAULT_ALIGNMENT);
             Blink_LED(LED_5V);
@@ -713,6 +797,9 @@ uint16_t FOC_GetEncoderRawAngle(void){return enc_raw;}
 uint32_t FOC_GetEncoderStatus(void){return enc_status;}
 uint32_t FOC_GetState(void){return foc_state;}
 uint32_t FOC_GetFault(void){return foc_fault;}
+float FOC_GetIqReference(void){return iq_ref_amp;}
+uint32_t FOC_GetAngleAgeUs(void){return foc_time_us() - enc_last_valid_us;}
+uint16_t FOC_GetControlFlags(void){return foc_control_flags;}
 
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *h)
 {
@@ -865,6 +952,10 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *h)
         --current_sense_blank_samples;
         overcurrent_count = 0U;
         pwm(0.5f,0.5f,0.5f);
+        record_control_sample((uint16_t)h->Instance->JDR1,
+                              (uint16_t)h->Instance->JDR2,
+                              0.0f, 0.0f,
+                              FOC_RECORD_FLAG_BLANKING);
         HAL_GPIO_WritePin(DRV_cotr_GPIO_Port, DRV_cotr_Pin, GPIO_PIN_SET);
         return;
     }
@@ -901,8 +992,16 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *h)
     float i_beta=0.5773502692f*(iu+2.0f*iv);
 
     uint32_t aligning = foc_state == FOC_STATE_ALIGNING;
+    uint32_t angle_age = foc_time_us() - enc_last_valid_us;
+    float prediction_us = (float)(angle_age > FOC_MAX_ANGLE_PREDICTION_US ?
+                                   FOC_MAX_ANGLE_PREDICTION_US : angle_age);
+    /* speed is the derivative in the encoder's native direction; apply the
+       direction sign only once when converting to electrical angle. */
+    float predicted_encoder_angle = angle +
+        speed * (prediction_us * 1.0e-6f);
     float theta = aligning ? align_theta :
-        wrap(encoder_direction*angle*FOC_MOTOR_POLE_PAIRS-electrical_offset);
+        wrap(encoder_direction * predicted_encoder_angle *
+             FOC_MOTOR_POLE_PAIRS - electrical_offset);
     float c=cosf(theta), s=sinf(theta);
 
     /* Park transform. This sign convention is the inverse of svpwm() above. */
@@ -912,6 +1011,11 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *h)
     if (aligning)
     {
         svpwm(theta, ALIGN_VOLTAGE * current_pi_bus_scale, 0.0f);
+        foc_control_flags = FOC_RECORD_FLAG_ALIGNING;
+        record_control_sample((uint16_t)h->Instance->JDR1,
+                              (uint16_t)h->Instance->JDR2,
+                              ALIGN_VOLTAGE * current_pi_bus_scale, 0.0f,
+                              foc_control_flags);
         HAL_GPIO_WritePin(DRV_cotr_GPIO_Port, DRV_cotr_Pin, GPIO_PIN_SET);
         return;
     }
@@ -949,6 +1053,20 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *h)
         float scale=CURRENT_OUTPUT_LIMIT/sqrtf(voltage_sq);
         pi_d.out*=scale;
         pi_q.out*=scale;
+        foc_control_flags = FOC_RECORD_FLAG_VECTOR_LIMIT;
+    }
+    else { foc_control_flags = 0U; }
+    if (fabsf(q_proportional + pi_q.integ) > CURRENT_OUTPUT_LIMIT)
+    {
+        foc_control_flags |= FOC_RECORD_FLAG_Q_SATURATED;
+    }
+    if (fabsf(d_proportional + pi_d.integ) > CURRENT_OUTPUT_LIMIT)
+    {
+        foc_control_flags |= FOC_RECORD_FLAG_D_SATURATED;
+    }
+    if (angle_age > FOC_MAX_ANGLE_PREDICTION_US)
+    {
+        foc_control_flags |= FOC_RECORD_FLAG_ENCODER_STALE;
     }
 
     /* Back-calculate both integrators from the voltage actually applied.
@@ -958,5 +1076,8 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *h)
     pi_d.integ=clamp(pi_d.out-d_proportional,-CURRENT_OUTPUT_LIMIT,CURRENT_OUTPUT_LIMIT);
 
     svpwm(theta,pi_d.out,pi_q.out);
+    record_control_sample((uint16_t)h->Instance->JDR1,
+                          (uint16_t)h->Instance->JDR2,
+                          pi_d.out, pi_q.out, foc_control_flags);
     HAL_GPIO_WritePin(DRV_cotr_GPIO_Port, DRV_cotr_Pin, GPIO_PIN_SET);
 }

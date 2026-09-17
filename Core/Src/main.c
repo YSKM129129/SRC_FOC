@@ -77,6 +77,7 @@ int main(void)
             (void)FOC_ApplyCommandFrame(&debug_command);
 #else
             (void)FOC_Can_SendTelemetry();
+            (void)FOC_Can_SendStatus();
             (void)FOC_Spi2_Exchange();
 #endif
         }

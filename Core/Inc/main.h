@@ -75,8 +75,6 @@ void Error_Handler(void);
 #define DRV_CS_GPIO_Port GPIOB
 #define MT6816_CS_Pin GPIO_PIN_2
 #define MT6816_CS_GPIO_Port GPIOB
-#define ADC_T_Pin GPIO_PIN_11
-#define ADC_T_GPIO_Port GPIOB
 #define SPI2_CS_Pin GPIO_PIN_12
 #define SPI2_CS_GPIO_Port GPIOB
 #define PWM_U_Pin GPIO_PIN_8

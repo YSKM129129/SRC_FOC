@@ -20,5 +20,6 @@
 
 HAL_StatusTypeDef FOC_Can_Init(void);
 HAL_StatusTypeDef FOC_Can_SendTelemetry(void);
+HAL_StatusTypeDef FOC_Can_SendStatus(void);
 
 #endif /* FOC_CAN_H */

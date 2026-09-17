@@ -129,11 +129,14 @@ void MX_ADC2_Init(void)
   hadc2.Init.Resolution = ADC_RESOLUTION_12B;
   hadc2.Init.DataAlign = ADC_DATAALIGN_RIGHT;
   hadc2.Init.GainCompensation = 0;
-  hadc2.Init.ScanConvMode = ADC_SCAN_ENABLE;
+  /* ADC2 is reserved for the bus-voltage feedback used by the current PI.
+     A single regular conversion avoids losing rank-1/rank-2 data when the
+     20 kHz current interrupt preempts a software-polled scan. */
+  hadc2.Init.ScanConvMode = ADC_SCAN_DISABLE;
   hadc2.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
   hadc2.Init.LowPowerAutoWait = DISABLE;
   hadc2.Init.ContinuousConvMode = DISABLE;
-  hadc2.Init.NbrOfConversion = 2;
+  hadc2.Init.NbrOfConversion = 1;
   hadc2.Init.DiscontinuousConvMode = DISABLE;
   hadc2.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc2.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
@@ -147,21 +150,12 @@ void MX_ADC2_Init(void)
 
   /** Configure Regular Channel
   */
-  sConfig.Channel = ADC_CHANNEL_14;
+  sConfig.Channel = ADC_CHANNEL_17;
   sConfig.Rank = ADC_REGULAR_RANK_1;
   sConfig.SamplingTime = ADC_SAMPLETIME_47CYCLES_5;
   sConfig.SingleDiff = ADC_SINGLE_ENDED;
   sConfig.OffsetNumber = ADC_OFFSET_NONE;
   sConfig.Offset = 0;
-  if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure Regular Channel
-  */
-  sConfig.Channel = ADC_CHANNEL_17;
-  sConfig.Rank = ADC_REGULAR_RANK_2;
   if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -237,20 +231,13 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* adcHandle)
     }
 
     __HAL_RCC_GPIOA_CLK_ENABLE();
-    __HAL_RCC_GPIOB_CLK_ENABLE();
     /**ADC2 GPIO Configuration
     PA4     ------> ADC2_IN17
-    PB11     ------> ADC2_IN14
     */
     GPIO_InitStruct.Pin = ADC_V_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(ADC_V_GPIO_Port, &GPIO_InitStruct);
-
-    GPIO_InitStruct.Pin = ADC_T_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    HAL_GPIO_Init(ADC_T_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN ADC2_MspInit 1 */
 
@@ -295,11 +282,8 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* adcHandle)
 
     /**ADC2 GPIO Configuration
     PA4     ------> ADC2_IN17
-    PB11     ------> ADC2_IN14
     */
     HAL_GPIO_DeInit(ADC_V_GPIO_Port, ADC_V_Pin);
-
-    HAL_GPIO_DeInit(ADC_T_GPIO_Port, ADC_T_Pin);
 
   /* USER CODE BEGIN ADC2_MspDeInit 1 */
 
