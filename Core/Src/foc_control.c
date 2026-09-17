@@ -11,8 +11,12 @@
 #define VREF 3.3f
 #define PWM_PERIOD 2125U
 #define MAX_MOD 0.90f
-#define MAX_PHASE_CURRENT 3.0f
-#define CURRENT_OUTPUT_LIMIT 0.05f
+#define MAX_IQ_CURRENT 3.5f
+#define PHASE_OVERCURRENT_LIMIT 5.0f
+#define CURRENT_OUTPUT_LIMIT 0.6f
+#define CURRENT_LOOP_HZ 20000.0f
+#define IQ_SLEW_RATE_A_PER_S 30.0f
+#define CURRENT_SENSE_BLANK_SAMPLES 20U
 #define ALIGN_VOLTAGE 0.04f
 #define FOC_CALIBRATION_ADDRESS 0x0801F000UL
 #define FOC_CALIBRATION_MAGIC 0x464F4342UL
@@ -21,7 +25,7 @@
 #define FOC_FORCE_ENCODER_CALIBRATION 0U
 
 typedef struct { float kp, ki, integ, out; } pi_t;
-static volatile float angle, angle_multi, speed, iq, id, iq_ref_amp;
+static volatile float angle, angle_multi, speed, iq, id, iq_ref_amp, iq_ref_target;
 /* MT6816: two separate 16-clock frames, each sent as two 8-bit bytes. */
 static uint8_t enc_rx[2];
 static uint8_t enc_tx[2] = {0x83U, 0x00U};
@@ -30,17 +34,26 @@ static volatile uint8_t enc_sampling_enabled, enc_busy;
 static volatile uint16_t enc_raw;
 static volatile uint32_t enc_status = FOC_ENCODER_NOT_READY;
 static volatile uint32_t enc_last_valid_ms;
+volatile uint32_t encoder_bad_frame_count, encoder_spi_error_count;
+volatile uint32_t encoder_fault_status_snapshot, encoder_fault_age_ms;
 static volatile uint32_t foc_state = FOC_STATE_IDLE, foc_fault;
 static volatile uint32_t overcurrent_detail;
+static volatile uint32_t current_sense_blank_samples;
+/* Retained fault snapshot for the debugger. At 40 V/V and 1 milliohm,
+   one ADC count is about 20.15 mA. */
+volatile uint16_t foc_fault_adc_u, foc_fault_adc_v;
+volatile float foc_fault_iu, foc_fault_iv, foc_fault_iw;
+volatile float foc_current_offset_u, foc_current_offset_v;
+volatile uint16_t drv_fault_status1_snapshot, drv_fault_status2_snapshot;
 static volatile uint32_t offset_samples;
 static float offset_u, offset_v;
 static volatile float align_theta;
 static float encoder_direction = 1.0f, electrical_offset;
 static float enc_prev, enc_turns;
-/* 339285: Rll=0.464 ohm, Lll=0.322 mH. Conservative current-loop
+/* 330285: Rll=0.464 ohm, Lll=0.322 mH. Conservative current-loop
    tuning for a 20 kHz update rate and approximately 16 V DC bus. */
-static pi_t pi_q = {1.2f, 0.06f, 0, 0};
-static pi_t pi_d = {1.2f, 0.06f, 0, 0};
+static pi_t pi_q = {0.04f, 0.0029f, 0, 0};
+static pi_t pi_d = {0.04f, 0.0029f, 0, 0};
 
 static void led_set(int led, uint32_t on)
 {
@@ -158,15 +171,17 @@ static void stop_fault(uint32_t fault)
 {
     foc_fault |= fault;
     foc_state = FOC_STATE_FAULT;
+    iq_ref_target = 0.0f;
+    iq_ref_amp = 0.0f;
     enc_sampling_enabled = 0U;
     HAL_GPIO_WritePin(DRV_cotr_GPIO_Port, DRV_cotr_Pin, GPIO_PIN_RESET);
 }
 
 static uint32_t encoder_healthy(void)
 {
-    /* Discard individual corrupt frames, but never use a stale angle. */
-    return !(enc_status & (FOC_ENCODER_NOT_READY | FOC_ENCODER_SPI_ERROR)) &&
-           (HAL_GetTick() - enc_last_valid_ms < 10U);
+    /* A valid recent angle is sufficient. Parity/DMA errors are recoverable;
+       only stop after interference has prevented every valid frame for 20 ms. */
+    return enc_initialized && (HAL_GetTick() - enc_last_valid_ms < 20U);
 }
 
 static void encoder_cs_delay(void)
@@ -186,8 +201,10 @@ static void encoder_start_frame(uint8_t command)
     if (HAL_SPI_TransmitReceive_DMA(&hspi1, enc_tx, enc_rx, 2U) != HAL_OK)
     {
         enc_busy = 0U;
+        enc_read_low = 0U;
         HAL_GPIO_WritePin(MT6816_CS_GPIO_Port, MT6816_CS_Pin, GPIO_PIN_SET);
         enc_status |= FOC_ENCODER_SPI_ERROR;
+        ++encoder_spi_error_count;
     }
 }
 
@@ -206,6 +223,7 @@ static void encoder_update(uint8_t high, uint8_t low)
     if (status & (FOC_ENCODER_PARITY_ERROR | FOC_ENCODER_NO_MAG))
     {
         enc_status = status;
+        ++encoder_bad_frame_count;
         return; /* Keep the last valid angle; do not feed corrupt data to FOC. */
     }
 
@@ -332,7 +350,7 @@ static void svpwm(float theta,float vd,float vq)
 }
 void FOC_SetTorque(float iq_amp)
 {
-    iq_ref_amp=isfinite(iq_amp)?clamp(iq_amp,-MAX_PHASE_CURRENT,MAX_PHASE_CURRENT):0.0f;
+    iq_ref_target=isfinite(iq_amp)?clamp(iq_amp,-MAX_IQ_CURRENT,MAX_IQ_CURRENT):0.0f;
 }
 
 void FOC_PollDriverFault(void)
@@ -388,6 +406,8 @@ void FOC_PollDriverFault(void)
     if (stru_DRV8353Obj.faultStatusReg1_obj.data & (1U << 10))
     {
         fault_reported = 1U;
+        drv_fault_status1_snapshot = stru_DRV8353Obj.faultStatusReg1_obj.data;
+        drv_fault_status2_snapshot = stru_DRV8353Obj.faultStatusReg2_obj.data;
         stop_fault(FOC_FAULT_DRIVER);
         /* Solid 5V LED means a runtime DRV8353 fault latched the bridge off. */
         led_set(LED_5V, 1U);
@@ -497,6 +517,7 @@ void FOC_Init(void)
     if (FOC_FORCE_ENCODER_CALIBRATION || !calibration_load())
     {
         align_theta = 0.0f;
+        current_sense_blank_samples = CURRENT_SENSE_BLANK_SAMPLES;
         foc_state = FOC_STATE_ALIGNING;
         if (!align_wait(800U)) { return; }
         float initial_angle = angle;
@@ -539,6 +560,9 @@ void FOC_Init(void)
     uint32_t primask = __get_PRIMASK();
     __disable_irq();
     HAL_GPIO_WritePin(DRV_cotr_GPIO_Port, DRV_cotr_Pin, GPIO_PIN_RESET);
+    iq_ref_amp = 0.0f;
+    iq_ref_target = 0.0f;
+    current_sense_blank_samples = CURRENT_SENSE_BLANK_SAMPLES;
     pi_q.integ = 0.0f;
     pi_d.integ = 0.0f;
     if (foc_state != FOC_STATE_FAULT) { foc_state = FOC_STATE_RUNNING; }
@@ -584,9 +608,11 @@ void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *h)
     encoder_cs_delay();
     HAL_GPIO_WritePin(MT6816_CS_GPIO_Port, MT6816_CS_Pin, GPIO_PIN_SET);
     enc_busy = 0U;
-    enc_sampling_enabled = 0U;
+    enc_read_low = 0U;
     enc_status |= FOC_ENCODER_SPI_ERROR;
-    /* Stop the chain on a transport error; retain the last valid sample. */
+    ++encoder_spi_error_count;
+    /* Retain the last valid angle and let the next scheduled frame restart
+       the two-frame transaction. A single EMI event must not latch a fault. */
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *h)
@@ -627,7 +653,13 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *h)
         {
             offset_u += (float)h->Instance->JDR1;
             offset_v += (float)h->Instance->JDR2;
-            if (offset_samples == 127U) { offset_u /= 128.0f; offset_v /= 128.0f; }
+            if (offset_samples == 127U)
+            {
+                offset_u /= 128.0f;
+                offset_v /= 128.0f;
+                foc_current_offset_u = offset_u;
+                foc_current_offset_v = offset_v;
+            }
             ++offset_samples;
         }
         return;
@@ -641,6 +673,8 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *h)
 
     if (!encoder_healthy()) 
     { 
+        encoder_fault_status_snapshot = enc_status;
+        encoder_fault_age_ms = HAL_GetTick() - enc_last_valid_ms;
         stop_fault(FOC_FAULT_ENCODER); 
         return; 
     }
@@ -653,18 +687,34 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *h)
     float iv=VREF*((float)h->Instance->JDR2-offset_v)/(ADC_FS*SHUNT_OHM*AMP_GAIN);
 
     float iw=-iu-iv;
-    if (fabsf(iu) > MAX_PHASE_CURRENT || fabsf(iv) > MAX_PHASE_CURRENT || fabsf(iw) > MAX_PHASE_CURRENT)
+    if (current_sense_blank_samples > 0U)
     {
-        if (iu > MAX_PHASE_CURRENT) { overcurrent_detail = 4U; }
-        else if (iu < -MAX_PHASE_CURRENT) { overcurrent_detail = 5U; }
-        else if (iv > MAX_PHASE_CURRENT) { overcurrent_detail = 6U; }
-        else if (iv < -MAX_PHASE_CURRENT) { overcurrent_detail = 7U; }
-        else if (iw > MAX_PHASE_CURRENT) { overcurrent_detail = 8U; }
+        --current_sense_blank_samples;
+        overcurrent_count = 0U;
+        pwm(0.5f,0.5f,0.5f);
+        HAL_GPIO_WritePin(DRV_cotr_GPIO_Port, DRV_cotr_Pin, GPIO_PIN_SET);
+        return;
+    }
+
+    if (fabsf(iu) > PHASE_OVERCURRENT_LIMIT ||
+        fabsf(iv) > PHASE_OVERCURRENT_LIMIT ||
+        fabsf(iw) > PHASE_OVERCURRENT_LIMIT)
+    {
+        if (iu > PHASE_OVERCURRENT_LIMIT) { overcurrent_detail = 4U; }
+        else if (iu < -PHASE_OVERCURRENT_LIMIT) { overcurrent_detail = 5U; }
+        else if (iv > PHASE_OVERCURRENT_LIMIT) { overcurrent_detail = 6U; }
+        else if (iv < -PHASE_OVERCURRENT_LIMIT) { overcurrent_detail = 7U; }
+        else if (iw > PHASE_OVERCURRENT_LIMIT) { overcurrent_detail = 8U; }
         else { overcurrent_detail = 9U; }
         /* Reject an isolated PWM-edge sample; three consecutive samples are
            only 150 us at the 20 kHz loop rate. Hardware OCP remains immediate. */
-        if (++overcurrent_count >= 3U)
+        if (++overcurrent_count >= 30U)
         {
+            foc_fault_adc_u = (uint16_t)h->Instance->JDR1;
+            foc_fault_adc_v = (uint16_t)h->Instance->JDR2;
+            foc_fault_iu = iu;
+            foc_fault_iv = iv;
+            foc_fault_iw = iw;
             stop_fault(FOC_FAULT_OVERCURRENT);
             led_set(LED_3V3, 1U);
             return;
@@ -693,15 +743,43 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *h)
         return;
     }
 
+    float iq_step=IQ_SLEW_RATE_A_PER_S/CURRENT_LOOP_HZ;
+    if (iq_ref_amp < iq_ref_target)
+    {
+        iq_ref_amp=fminf(iq_ref_amp+iq_step,iq_ref_target);
+    }
+    else if (iq_ref_amp > iq_ref_target)
+    {
+        iq_ref_amp=fmaxf(iq_ref_amp-iq_step,iq_ref_target);
+    }
+
     float eq=iq_ref_amp-iq;
     float ed=-id;
 
     // PI control
+    float q_proportional=pi_q.kp*eq;
+    float d_proportional=pi_d.kp*ed;
     pi_q.integ=clamp(pi_q.integ+pi_q.ki*eq,-CURRENT_OUTPUT_LIMIT,CURRENT_OUTPUT_LIMIT);
-    pi_q.out=clamp(pi_q.kp*eq+pi_q.integ,-CURRENT_OUTPUT_LIMIT,CURRENT_OUTPUT_LIMIT);
+    pi_q.out=clamp(q_proportional+pi_q.integ,-CURRENT_OUTPUT_LIMIT,CURRENT_OUTPUT_LIMIT);
 
     pi_d.integ=clamp(pi_d.integ+pi_d.ki*ed,-CURRENT_OUTPUT_LIMIT,CURRENT_OUTPUT_LIMIT);
-    pi_d.out=clamp(pi_d.kp*ed+pi_d.integ,-CURRENT_OUTPUT_LIMIT,CURRENT_OUTPUT_LIMIT);
+    pi_d.out=clamp(d_proportional+pi_d.integ,-CURRENT_OUTPUT_LIMIT,CURRENT_OUTPUT_LIMIT);
+
+    /* Limit the combined voltage vector, not each axis independently. This
+       keeps the minimum low-side conduction window available for ADC ranks. */
+    float voltage_sq=pi_d.out*pi_d.out+pi_q.out*pi_q.out;
+    if (voltage_sq > CURRENT_OUTPUT_LIMIT*CURRENT_OUTPUT_LIMIT)
+    {
+        float scale=CURRENT_OUTPUT_LIMIT/sqrtf(voltage_sq);
+        pi_d.out*=scale;
+        pi_q.out*=scale;
+    }
+
+    /* Back-calculate both integrators from the voltage actually applied.
+       Without this, vector limiting leaves a hidden saturated integrator and
+       can drive the phase current past the target when it unwinds. */
+    pi_q.integ=clamp(pi_q.out-q_proportional,-CURRENT_OUTPUT_LIMIT,CURRENT_OUTPUT_LIMIT);
+    pi_d.integ=clamp(pi_d.out-d_proportional,-CURRENT_OUTPUT_LIMIT,CURRENT_OUTPUT_LIMIT);
 
     svpwm(theta,pi_d.out,pi_q.out);
     HAL_GPIO_WritePin(DRV_cotr_GPIO_Port, DRV_cotr_Pin, GPIO_PIN_SET);

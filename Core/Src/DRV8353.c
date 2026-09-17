@@ -52,6 +52,7 @@ volatile uint32_t drv835x_debug_hal_status;
 volatile uint16_t drv835x_debug_tx;
 volatile uint16_t drv835x_debug_rx;
 volatile uint16_t drv835x_debug_expected;
+volatile uint16_t drv835x_debug_csacr;
  
 StruDRV835XCfgPara stru_config = 
 {
@@ -70,13 +71,15 @@ StruDRV835XCfgPara stru_config =
    .DEAD_TIME = DEADTIME_400NS,
     
    //Gate Drive HS Register (address = 0x03h)
-   .IDRIVEP_HS = IDRIVEP_HS_1000MA,
-   .IDRIVEN_HS = IDRIVEN_HS_2000MA,
+   /* BSC028N06NS has about 37 nC total gate charge. Start with controlled
+      edges; the former 1 A/2 A maximum settings can create VDS ringing. */
+   .IDRIVEP_HS = IDRIVEP_HS_150MA,
+   .IDRIVEN_HS = IDRIVEN_HS_300MA,
    .LOCK = LOCK_OFF,
     
    // Gate Drive LS Register (address = 0x04h) 
-   .IDRIVEN_LS = IDRIVEN_LS_2000MA,
-   .IDRIVEP_LS = IDRIVEP_LS_1000MA,
+   .IDRIVEN_LS = IDRIVEN_LS_300MA,
+   .IDRIVEP_LS = IDRIVEP_LS_150MA,
    .TDRIVE = TDRIVE_4000NS,
    .CBC = PWM_GIVER_ENABLE,  // 1b = For VDS_OCP and SEN_OCP, the fault is cleared when
                              // a new PWM input is given or after tRETRY
@@ -233,6 +236,7 @@ static HAL_StatusTypeDef write_reg(uint16_t address, uint16_t data)
             read_reg(address, &verify) == HAL_OK &&
             verify == (data & 0x07ffU))
         {
+            if (address == CSACR) { drv835x_debug_csacr = verify; }
             return HAL_OK;
         }
     }

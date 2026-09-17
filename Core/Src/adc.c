@@ -76,9 +76,10 @@ void MX_ADC1_Init(void)
   */
   sConfigInjected.InjectedChannel = ADC_CHANNEL_1;
   sConfigInjected.InjectedRank = ADC_INJECTED_RANK_1;
-  /* Sample across about 1.1 us after the PWM boundary so the DRV8353 CSA
-     output can settle instead of capturing a switching-edge spike. */
-  sConfigInjected.InjectedSamplingTime = ADC_SAMPLETIME_47CYCLES_5;
+  /* TRGO2 occurs about 1 us after CNT=0. Keep both sequential injected
+     samples short enough to finish before the earliest allowed PWM edge;
+     a long rank-1 conversion otherwise pushes rank 2 into that edge. */
+  sConfigInjected.InjectedSamplingTime = ADC_SAMPLETIME_12CYCLES_5;
   sConfigInjected.InjectedSingleDiff = ADC_SINGLE_ENDED;
   sConfigInjected.InjectedOffsetNumber = ADC_OFFSET_NONE;
   sConfigInjected.InjectedOffset = 0;

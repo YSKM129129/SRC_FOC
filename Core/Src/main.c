@@ -16,7 +16,7 @@
 #ifndef FOC_DEBUG_FAKE_COMMAND
 #define FOC_DEBUG_FAKE_COMMAND 1
 #endif
-#define FOC_DEBUG_IQ_COMMAND   100
+#define FOC_DEBUG_IQ_COMMAND   300
 
 /* System clock configuration generated for the STM32G474. */
 void SystemClock_Config(void);

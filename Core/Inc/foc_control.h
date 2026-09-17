@@ -36,7 +36,8 @@ float FOC_GetIq(void);
 float FOC_GetId(void);
 /* Last valid single-turn mechanical angle: 0..16383. */
 uint16_t FOC_GetEncoderRawAngle(void);
-/* Zero means the latest completed angle pair is valid. SPI error stops DMA. */
+/* Zero means the latest completed angle pair is valid. Transient errors are
+   retried; control stops only when no valid angle arrives for 20 ms. */
 uint32_t FOC_GetEncoderStatus(void);
 uint32_t FOC_GetState(void);
 uint32_t FOC_GetFault(void);
