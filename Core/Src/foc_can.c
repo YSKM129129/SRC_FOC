@@ -122,8 +122,8 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
          header.Identifier == FOC_CAN_BROADCAST_COMMAND_ID) &&
         header.DataLength >= FDCAN_DLC_BYTES_4)
     {
-        /* Bytes 2..3 are normalized Iq command: -1000..1000 = -1.0..1.0. */
+        /* Bytes 2..3 are signed Iq in 10 mA/count, little-endian. */
         int16_t iq_command = foc_can_read_i16(&data[2]);
-        FOC_SetTorque((float)iq_command / 1000.0f);
+        FOC_SetTorque((float)iq_command * 0.01f);
     }
 }

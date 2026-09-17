@@ -17,9 +17,13 @@
 #ifndef DRV835X_H
 #define DRV835X_H
  
-#ifdef _cplusplus
+#ifdef __cplusplus
 extern "C"
 {
+#endif
+
+#if defined(__CC_ARM)
+#pragma anon_unions
 #endif
  
 #include "main.h"
@@ -294,6 +298,34 @@ typedef struct
  
                    
 extern Stru_DRV835X stru_DRV8353Obj;
+
+/* Debug values remain at the failing operation when initialization fails. */
+#define DRV835X_STAGE_IDLE          0U
+#define DRV835X_STAGE_READ_DCR      1U
+#define DRV835X_STAGE_READ_CSACR    2U
+#define DRV835X_STAGE_READ_DFGCR    3U
+#define DRV835X_STAGE_READ_HSR      4U
+#define DRV835X_STAGE_READ_LSR      5U
+#define DRV835X_STAGE_READ_OCPCR    6U
+#define DRV835X_STAGE_READ_FSR1     7U
+#define DRV835X_STAGE_READ_FSR2     8U
+#define DRV835X_STAGE_WRITE_DCR     9U
+#define DRV835X_STAGE_WRITE_HSR    10U
+#define DRV835X_STAGE_WRITE_LSR    11U
+#define DRV835X_STAGE_WRITE_OCPCR  12U
+#define DRV835X_STAGE_WRITE_CSACR  13U
+#define DRV835X_STAGE_READY        14U
+
+#define DRV835X_ERROR_NONE          0U
+#define DRV835X_ERROR_SPI           1U
+#define DRV835X_ERROR_VERIFY        2U
+
+extern volatile uint32_t drv835x_debug_stage;
+extern volatile uint32_t drv835x_debug_error;
+extern volatile uint32_t drv835x_debug_hal_status;
+extern volatile uint16_t drv835x_debug_tx;
+extern volatile uint16_t drv835x_debug_rx;
+extern volatile uint16_t drv835x_debug_expected;
  
  
 typedef struct
@@ -326,15 +358,15 @@ typedef struct
 } StruDRV835XCfgPara;
  
  
-void DRV835X_Init(void);
-void DRV835X_updateCfgPara( void );
+HAL_StatusTypeDef DRV835X_Init(void);
+HAL_StatusTypeDef DRV835X_updateCfgPara(void);
  
 void DRV835X_read_FaultStatusReg1(void);
 void DRV835X_read_FaultStatusReg2(void);
  
  
  
-#ifdef _cplusplus
+#ifdef __cplusplus
 }
 #endif
  

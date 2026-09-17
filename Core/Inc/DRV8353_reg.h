@@ -17,7 +17,7 @@
 #ifndef __DRV_DRV835X_REG_H
 #define __DRV_DRV835X_REG_H
  
-#ifdef _cplusplus
+#ifdef __cplusplus
 extern "C"
 {
 #endif
@@ -57,38 +57,38 @@ extern "C"
 #define LOCK_ON             0x6
 #define LOCK_OFF            0x3
  
-#define IDRIVEP_HS_10MA     0x0     /// Gate drive high side turn on current
-#define IDRIVEP_HS_30MA     0x1
-#define IDRIVEP_HS_60MA     0x2
-#define IDRIVEP_HS_80MA     0x3
-#define IDRIVEP_HS_120MA    0x4
-#define IDRIVEP_HS_140MA    0x5
-#define IDRIVEP_HS_170MA    0x6
-#define IDRIVEP_HS_190MA    0x7
-#define IDRIVEP_HS_260MA    0x8
-#define IDRIVEP_HS_330MA    0x9
-#define IDRIVEP_HS_370MA    0xA
-#define IDRIVEP_HS_440MA    0xB
-#define IDRIVEP_HS_570MA    0xC
-#define IDRIVEP_HS_680MA    0xD
-#define IDRIVEP_HS_820MA    0xE
+#define IDRIVEP_HS_50MA     0x0     /// Gate drive high side turn on current (DRV8353F)
+#define IDRIVEP_HS_50MA_ALT 0x1
+#define IDRIVEP_HS_100MA    0x2
+#define IDRIVEP_HS_150MA    0x3
+#define IDRIVEP_HS_300MA    0x4
+#define IDRIVEP_HS_350MA    0x5
+#define IDRIVEP_HS_400MA    0x6
+#define IDRIVEP_HS_450MA    0x7
+#define IDRIVEP_HS_550MA    0x8
+#define IDRIVEP_HS_600MA    0x9
+#define IDRIVEP_HS_650MA    0xA
+#define IDRIVEP_HS_700MA    0xB
+#define IDRIVEP_HS_850MA    0xC
+#define IDRIVEP_HS_900MA    0xD
+#define IDRIVEP_HS_950MA    0xE
 #define IDRIVEP_HS_1000MA   0xF
  
-#define IDRIVEN_HS_20MA     0x0     /// High side turn off current
-#define IDRIVEN_HS_60MA     0x1     
-#define IDRIVEN_HS_120MA    0x2
-#define IDRIVEN_HS_160MA    0x3
-#define IDRIVEN_HS_240MA    0x4
-#define IDRIVEN_HS_280MA    0x5
-#define IDRIVEN_HS_340MA    0x6
-#define IDRIVEN_HS_380MA    0x7
-#define IDRIVEN_HS_520MA    0x8
-#define IDRIVEN_HS_660MA    0x9
-#define IDRIVEN_HS_740MA    0xA
-#define IDRIVEN_HS_880MA    0xB
-#define IDRIVEN_HS_1140MA   0xC
-#define IDRIVEN_HS_1360MA   0xD
-#define IDRIVEN_HS_1640MA   0xE
+#define IDRIVEN_HS_100MA     0x0     /// High side turn off current (DRV8353F)
+#define IDRIVEN_HS_100MA_ALT 0x1
+#define IDRIVEN_HS_200MA     0x2
+#define IDRIVEN_HS_300MA     0x3
+#define IDRIVEN_HS_600MA     0x4
+#define IDRIVEN_HS_700MA     0x5
+#define IDRIVEN_HS_800MA     0x6
+#define IDRIVEN_HS_900MA     0x7
+#define IDRIVEN_HS_1100MA    0x8
+#define IDRIVEN_HS_1200MA    0x9
+#define IDRIVEN_HS_1300MA    0xA
+#define IDRIVEN_HS_1400MA    0xB
+#define IDRIVEN_HS_1700MA    0xC
+#define IDRIVEN_HS_1800MA    0xD
+#define IDRIVEN_HS_1900MA    0xE
 #define IDRIVEN_HS_2000MA   0xF
  
 /// Gate Drive LS Fields : Gate Drive LS Register (address = 0x04h)
@@ -97,38 +97,38 @@ extern "C"
 #define TDRIVE_2000NS       0x2
 #define TDRIVE_4000NS       0x3
  
-#define IDRIVEP_LS_10MA     0x0     /// Gate drive high side turn on current
-#define IDRIVEP_LS_30MA     0x1
-#define IDRIVEP_LS_60MA     0x2
-#define IDRIVEP_LS_80MA     0x3
-#define IDRIVEP_LS_120MA    0x4
-#define IDRIVEP_LS_140MA    0x5
-#define IDRIVEP_LS_170MA    0x6
-#define IDRIVEP_LS_190MA    0x7
-#define IDRIVEP_LS_260MA    0x8
-#define IDRIVEP_LS_330MA    0x9
-#define IDRIVEP_LS_370MA    0xA
-#define IDRIVEP_LS_440MA    0xB
-#define IDRIVEP_LS_570MA    0xC
-#define IDRIVEP_LS_680MA    0xD
-#define IDRIVEP_LS_820MA    0xE
+#define IDRIVEP_LS_50MA     0x0     /// Gate drive low side turn on current (DRV8353F)
+#define IDRIVEP_LS_50MA_ALT 0x1
+#define IDRIVEP_LS_100MA    0x2
+#define IDRIVEP_LS_150MA    0x3
+#define IDRIVEP_LS_300MA    0x4
+#define IDRIVEP_LS_350MA    0x5
+#define IDRIVEP_LS_400MA    0x6
+#define IDRIVEP_LS_450MA    0x7
+#define IDRIVEP_LS_550MA    0x8
+#define IDRIVEP_LS_600MA    0x9
+#define IDRIVEP_LS_650MA    0xA
+#define IDRIVEP_LS_700MA    0xB
+#define IDRIVEP_LS_850MA    0xC
+#define IDRIVEP_LS_900MA    0xD
+#define IDRIVEP_LS_950MA    0xE
 #define IDRIVEP_LS_1000MA   0xF
  
-#define IDRIVEN_LS_20MA     0x0     /// High side turn off current
-#define IDRIVEN_LS_60MA     0x1     
-#define IDRIVEN_LS_120MA    0x2
-#define IDRIVEN_LS_160MA    0x3
-#define IDRIVEN_LS_240MA    0x4
-#define IDRIVEN_LS_280MA    0x5
-#define IDRIVEN_LS_340MA    0x6
-#define IDRIVEN_LS_380MA    0x7
-#define IDRIVEN_LS_520MA    0x8
-#define IDRIVEN_LS_660MA    0x9
-#define IDRIVEN_LS_740MA    0xA
-#define IDRIVEN_LS_880MA    0xB
-#define IDRIVEN_LS_1140MA   0xC
-#define IDRIVEN_LS_1360MA   0xD
-#define IDRIVEN_LS_1640MA   0xE
+#define IDRIVEN_LS_100MA     0x0     /// Low side turn off current (DRV8353F)
+#define IDRIVEN_LS_100MA_ALT 0x1
+#define IDRIVEN_LS_200MA     0x2
+#define IDRIVEN_LS_300MA     0x3
+#define IDRIVEN_LS_600MA     0x4
+#define IDRIVEN_LS_700MA     0x5
+#define IDRIVEN_LS_800MA     0x6
+#define IDRIVEN_LS_900MA     0x7
+#define IDRIVEN_LS_1100MA    0x8
+#define IDRIVEN_LS_1200MA    0x9
+#define IDRIVEN_LS_1300MA    0xA
+#define IDRIVEN_LS_1400MA    0xB
+#define IDRIVEN_LS_1700MA    0xC
+#define IDRIVEN_LS_1800MA    0xD
+#define IDRIVEN_LS_1900MA    0xE
 #define IDRIVEN_LS_2000MA   0xF
  
 #define  PWM_GIVER_ENABLE    0x1
@@ -136,7 +136,7 @@ extern "C"
  
  
 /// OCP Control Fields ///
-#define TRETRY_4MS          0x0     /// VDS OCP and SEN OCP retry time
+#define TRETRY_8MS          0x0     /// VDS OCP and SEN OCP retry time (DRV8353F)
 #define TRETRY_50US         0x1
  
 #define DEADTIME_50NS       0x0     /// Deadtime
@@ -149,27 +149,27 @@ extern "C"
 #define OCP_REPORT          0x2
 #define OCP_NONE            0x3
  
-#define OCP_DEG_2US         0x0     /// OCP Deglitch Time
-#define OCP_DEG_4US         0x1
-#define OCP_DEG_6US         0x2
+#define OCP_DEG_1US         0x0     /// OCP Deglitch Time (DRV8353F)
+#define OCP_DEG_2US         0x1
+#define OCP_DEG_4US         0x2
 #define OCP_DEG_8US         0x3
  
 #define VDS_LVL_0_06        0x0
-#define VDS_LVL_0_13        0x1
-#define VDS_LVL_0_2         0x2
-#define VDS_LVL_0_26        0x3
-#define VDS_LVL_0_31        0x4
-#define VDS_LVL_0_45        0x5
-#define VDS_LVL_0_53        0x6
-#define VDS_LVL_0_6         0x7
-#define VDS_LVL_0_68        0x8
-#define VDS_LVL_0_75        0x9
-#define VDS_LVL_0_94        0xA
-#define VDS_LVL_1_13        0xB
-#define VDS_LVL_1_3         0xC
-#define VDS_LVL_1_5         0xD
-#define VDS_LVL_1_7         0xE
-#define VDS_LVL_1_88        0xF
+#define VDS_LVL_0_07        0x1
+#define VDS_LVL_0_08        0x2
+#define VDS_LVL_0_09        0x3
+#define VDS_LVL_0_1         0x4
+#define VDS_LVL_0_2         0x5
+#define VDS_LVL_0_3         0x6
+#define VDS_LVL_0_4         0x7
+#define VDS_LVL_0_5         0x8
+#define VDS_LVL_0_6         0x9
+#define VDS_LVL_0_7         0xA
+#define VDS_LVL_0_8         0xB
+#define VDS_LVL_0_9         0xC
+#define VDS_LVL_1_0         0xD
+#define VDS_LVL_1_5         0xE
+#define VDS_LVL_2_0         0xF
  
 /// CSA Control Fields ///
 #define CSA_FET_SP          0x0     /// Current sense amplifier positive input
@@ -194,10 +194,9 @@ extern "C"
     
     
  
-#ifdef _cplusplus
+#ifdef __cplusplus
 }
 #endif
  
  
 #endif  /* __DRV_DRV835X_REG_H */
- 

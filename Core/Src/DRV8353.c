@@ -21,6 +21,7 @@ extern SPI_HandleTypeDef        hspi3;
 /* Private define ------------------------------------------------------------*/
 #define TIME_OUT                100
 #define DEFAULT_GAIN            10
+#define WRITE_RETRIES           3U
 #define DRV835X_SPI_Handle      hspi3
  
 // DRV8353 SPI CS PIN 
@@ -45,6 +46,12 @@ extern SPI_HandleTypeDef        hspi3;
 /* Private variables ---------------------------------------------------------*/
 Stru_DRV835X_Status stru_DRV835X_Status;
 Stru_DRV835X stru_DRV8353Obj;
+volatile uint32_t drv835x_debug_stage;
+volatile uint32_t drv835x_debug_error;
+volatile uint32_t drv835x_debug_hal_status;
+volatile uint16_t drv835x_debug_tx;
+volatile uint16_t drv835x_debug_rx;
+volatile uint16_t drv835x_debug_expected;
  
 StruDRV835XCfgPara stru_config = 
 {
@@ -53,13 +60,13 @@ StruDRV835XCfgPara stru_config =
     
     // CSA Control Register (DRV8353 and DRV8353R Only) (address = 0x06h)
    .SEN_LVL = SEN_LVL_0_25,   //  00b = Sense OCP 0.25 V
-   .CSA_GAIN = CSA_GAIN_10,   //  01b = 10-V/V shunt amplifier gain
+   .CSA_GAIN = CSA_GAIN_40,   //  11b = 40-V/V for reliable sub-amp control
    .VREF_DIV = VREF_DIV_2,    //  1b = Sense amplifier reference voltage is VREF divided by 2
     
     // OCP Control Register (address = 0x05h)
-   .VDS_LVL =  VDS_LVL_0_94,
-   .OCP_DEG =  OCP_DEG_6US,
-   .OCP_MODE = OCP_REPORT,
+   .VDS_LVL =  VDS_LVL_0_9,
+   .OCP_DEG =  OCP_DEG_4US,
+   .OCP_MODE = OCP_LATCH,     // Shut the bridge down instead of only reporting OCP
    .DEAD_TIME = DEADTIME_400NS,
     
    //Gate Drive HS Register (address = 0x03h)
@@ -76,36 +83,44 @@ StruDRV835XCfgPara stru_config =
 };
  
 /* Private function prototypes -----------------------------------------------*/
-static uint16_t read_reg(uint16_t address);
-static uint16_t write_reg(uint16_t address, uint16_t data);
+static HAL_StatusTypeDef transfer_word(uint16_t command, uint16_t *response);
+static HAL_StatusTypeDef read_reg(uint16_t address, uint16_t *data);
+static HAL_StatusTypeDef write_reg(uint16_t address, uint16_t data);
  
  
-void DRV835X_updateCfgPara( void )
+HAL_StatusTypeDef DRV835X_updateCfgPara(void)
 {
     uint16_t data;
- 
-    stru_DRV8353Obj.drvCtrl_obj.data = read_reg( DCR );
-    stru_DRV8353Obj.drvCsa_obj.data = read_reg( CSACR );
-    stru_DRV8353Obj.drvCfg_obj.data = read_reg( DFGCR );
- 
-    stru_DRV8353Obj.drvGateHS_obj.data = read_reg( HSR );
-    stru_DRV8353Obj.drvGateLS_obj.data = read_reg( LSR );
-    stru_DRV8353Obj.drvOcp_obj.data = read_reg( OCPCR );
- 
-    stru_DRV8353Obj.faultStatusReg1_obj.data = read_reg( FSR1 );
-    stru_DRV8353Obj.faultStatusReg2_obj.data = read_reg( FSR2 );
+
+#define READ_STAGE(stage_, reg_, destination_) do { \
+    drv835x_debug_stage = (stage_); \
+    if (read_reg((reg_), &(destination_)) != HAL_OK) { return HAL_ERROR; } \
+} while (0)
+#define WRITE_STAGE(stage_, reg_, value_) do { \
+    drv835x_debug_stage = (stage_); \
+    if (write_reg((reg_), (value_)) != HAL_OK) { return HAL_ERROR; } \
+} while (0)
+
+    READ_STAGE(DRV835X_STAGE_READ_DCR, DCR, stru_DRV8353Obj.drvCtrl_obj.data);
+    READ_STAGE(DRV835X_STAGE_READ_CSACR, CSACR, stru_DRV8353Obj.drvCsa_obj.data);
+    READ_STAGE(DRV835X_STAGE_READ_DFGCR, DFGCR, stru_DRV8353Obj.drvCfg_obj.data);
+    READ_STAGE(DRV835X_STAGE_READ_HSR, HSR, stru_DRV8353Obj.drvGateHS_obj.data);
+    READ_STAGE(DRV835X_STAGE_READ_LSR, LSR, stru_DRV8353Obj.drvGateLS_obj.data);
+    READ_STAGE(DRV835X_STAGE_READ_OCPCR, OCPCR, stru_DRV8353Obj.drvOcp_obj.data);
+    READ_STAGE(DRV835X_STAGE_READ_FSR1, FSR1, stru_DRV8353Obj.faultStatusReg1_obj.data);
+    READ_STAGE(DRV835X_STAGE_READ_FSR2, FSR2, stru_DRV8353Obj.faultStatusReg2_obj.data);
  
     // Driver Control Register (address = 0x02h)
     stru_DRV8353Obj.drvCtrl_obj.ctrlRegObj.PWM_MODE  = stru_config.PWM_MODE;
     data = stru_DRV8353Obj.drvCtrl_obj.data;
-    write_reg( DCR, data);
+    WRITE_STAGE(DRV835X_STAGE_WRITE_DCR, DCR, data);
  
     //Gate Drive HS Register (address = 0x03h)
     stru_DRV8353Obj.drvGateHS_obj.gateHSRegObj.IDRIVEP_HS = stru_config.IDRIVEP_HS;
     stru_DRV8353Obj.drvGateHS_obj.gateHSRegObj.IDRIVEN_HS = stru_config.IDRIVEN_HS;
     stru_DRV8353Obj.drvGateHS_obj.gateHSRegObj.LOCK = stru_config.LOCK;
     data = stru_DRV8353Obj.drvGateHS_obj.data;
-    write_reg( HSR, data);
+    WRITE_STAGE(DRV835X_STAGE_WRITE_HSR, HSR, data);
  
     // Gate Drive LS Register (address = 0x04h) 
     stru_DRV8353Obj.drvGateLS_obj.gateLSRegObj.IDRIVEN_LS = stru_config.IDRIVEN_LS;
@@ -113,7 +128,7 @@ void DRV835X_updateCfgPara( void )
     stru_DRV8353Obj.drvGateLS_obj.gateLSRegObj.TDRIVE = stru_config.TDRIVE;
     stru_DRV8353Obj.drvGateLS_obj.gateLSRegObj.CBC = stru_config.CBC;
     data = stru_DRV8353Obj.drvGateLS_obj.data;
-    write_reg( LSR, data);
+    WRITE_STAGE(DRV835X_STAGE_WRITE_LSR, LSR, data);
  
     // OCP Control Register (address = 0x05h)
     stru_DRV8353Obj.drvOcp_obj.ocpObj.VDS_LVL =  stru_config.VDS_LVL;
@@ -121,19 +136,32 @@ void DRV835X_updateCfgPara( void )
     stru_DRV8353Obj.drvOcp_obj.ocpObj.OCP_MODE = stru_config.OCP_MODE;
     stru_DRV8353Obj.drvOcp_obj.ocpObj.DEAD_TIME = stru_config.DEAD_TIME;
     data = stru_DRV8353Obj.drvOcp_obj.data;
-    write_reg( OCPCR, data);
+    WRITE_STAGE(DRV835X_STAGE_WRITE_OCPCR, OCPCR, data);
  
     // CSA Control Register (DRV8353 and DRV8353R Only) (address = 0x06h)
     stru_DRV8353Obj.drvCsa_obj.csaObj.SEN_LVL  = stru_config.SEN_LVL;
     stru_DRV8353Obj.drvCsa_obj.csaObj.CSA_GAIN = stru_config.CSA_GAIN;
     stru_DRV8353Obj.drvCsa_obj.csaObj.VREF_DIV = stru_config.VREF_DIV;
-    data = stru_DRV8353Obj.drvCtrl_obj.data;
-    write_reg( CSACR, data);
+    data = stru_DRV8353Obj.drvCsa_obj.data;
+    WRITE_STAGE(DRV835X_STAGE_WRITE_CSACR, CSACR, data);
+
+    drv835x_debug_stage = DRV835X_STAGE_READY;
+#undef READ_STAGE
+#undef WRITE_STAGE
+    return HAL_OK;
 }
  
  
-void DRV835X_Init( void )
+HAL_StatusTypeDef DRV835X_Init(void)
 {
+    drv835x_debug_stage = DRV835X_STAGE_IDLE;
+    drv835x_debug_error = DRV835X_ERROR_NONE;
+    drv835x_debug_hal_status = HAL_OK;
+    drv835x_debug_tx = 0U;
+    drv835x_debug_rx = 0U;
+    drv835x_debug_expected = 0U;
+    DRV835X_CS_DIS;
+    DRV835X_PWML_LOW;
     DRV835X_ENABLE_LOW;
     HAL_Delay(100);
     DRV835X_ENABLE_HIGH;
@@ -143,63 +171,77 @@ void DRV835X_Init( void )
     DRV835X_PWML_LOW;
     HAL_Delay(200);
     
-    DRV835X_updateCfgPara();
+    if (DRV835X_updateCfgPara() != HAL_OK)
+    {
+        DRV835X_PWML_LOW;
+        DRV835X_ENABLE_LOW;
+        return HAL_ERROR;
+    }
+    return HAL_OK;
 }
  
  
 void DRV835X_read_FaultStatusReg1(void)
 {
-    stru_DRV8353Obj.faultStatusReg1_obj.data = read_reg( FSR1 );
+    (void)read_reg(FSR1, &stru_DRV8353Obj.faultStatusReg1_obj.data);
 }
  
 void DRV835X_read_FaultStatusReg2(void)
 {
-    stru_DRV8353Obj.faultStatusReg2_obj.data = read_reg( FSR2 );
+    (void)read_reg(FSR2, &stru_DRV8353Obj.faultStatusReg2_obj.data);
 }
  
  
-static uint16_t read_reg(uint16_t address)
+static HAL_StatusTypeDef transfer_word(uint16_t command, uint16_t *response)
 {
-    uint16_t data;
-    Input_WrReg stru_Input_WrRegObj;
-    
-    stru_Input_WrRegObj.inputRegObj.WR =  R_MODE;
+    uint16_t received = 0U;
+    for (uint32_t i = 0U; i < 128U; ++i) { __NOP(); }
+    DRV835X_CS_EN;
+    for (uint32_t i = 0U; i < 32U; ++i) { __NOP(); }
+    HAL_StatusTypeDef status = HAL_SPI_TransmitReceive(&DRV835X_SPI_Handle,
+        (uint8_t *)&command, (uint8_t *)&received, 1U, TIME_OUT);
+    for (uint32_t i = 0U; i < 32U; ++i) { __NOP(); }
+    DRV835X_CS_DIS;
+    drv835x_debug_tx = command;
+    drv835x_debug_rx = received & 0x07ffU;
+    drv835x_debug_hal_status = status;
+    if (status != HAL_OK) { drv835x_debug_error = DRV835X_ERROR_SPI; }
+    if (response != NULL) { *response = received & 0x07ffU; }
+    return status;
+}
+
+static HAL_StatusTypeDef read_reg(uint16_t address, uint16_t *data)
+{
+    Input_WrReg stru_Input_WrRegObj = {0};
+    stru_Input_WrRegObj.inputRegObj.WR = R_MODE;
     stru_Input_WrRegObj.inputRegObj.ADDRESS = address;
-    data = stru_Input_WrRegObj.data;
-    
-    DRV835X_CS_EN;
-    HAL_SPI_Transmit(&DRV835X_SPI_Handle, (uint8_t *)&data, 1,TIME_OUT);
-    DRV835X_CS_DIS;
-    HAL_Delay(1);
-    
-    DRV835X_CS_EN;
-    HAL_SPI_Receive(&DRV835X_SPI_Handle, (uint8_t *)&data, 1, TIME_OUT);
-    DRV835X_CS_DIS;
-    HAL_Delay(1);
-    
-    return (data & 0x7FF);
+    return transfer_word(stru_Input_WrRegObj.data, data);
 }
- 
-static uint16_t write_reg(uint16_t address, uint16_t data)
+
+static HAL_StatusTypeDef write_reg(uint16_t address, uint16_t data)
 {
-    Input_WrReg stru_Input_WrRegObj;
-    
+    Input_WrReg stru_Input_WrRegObj = {0};
     stru_Input_WrRegObj.inputRegObj.WR =  W_MODE;
     stru_Input_WrRegObj.inputRegObj.ADDRESS = address;
-    stru_Input_WrRegObj.inputRegObj.DATA = data;
-    
-    data = stru_Input_WrRegObj.data;
-    do
+    stru_Input_WrRegObj.inputRegObj.DATA = data & 0x07ffU;
+    drv835x_debug_expected = data & 0x07ffU;
+
+    for (uint32_t attempt = 0U; attempt < WRITE_RETRIES; ++attempt)
     {
-        DRV835X_CS_EN;
-        HAL_SPI_Transmit(&DRV835X_SPI_Handle, (uint8_t *)&data, 1, TIME_OUT);
-        DRV835X_CS_DIS;
-        HAL_Delay(1);
-    }while (read_reg(address) != (data & 0x7FF));
-    
-    return 0;
+        uint16_t verify;
+        if (transfer_word(stru_Input_WrRegObj.data, NULL) == HAL_OK &&
+            read_reg(address, &verify) == HAL_OK &&
+            verify == (data & 0x07ffU))
+        {
+            return HAL_OK;
+        }
+    }
+    if (drv835x_debug_error == DRV835X_ERROR_NONE)
+    {
+        drv835x_debug_error = DRV835X_ERROR_VERIFY;
+    }
+    return HAL_ERROR;
 }
  
  
 /* End of this file */
- 

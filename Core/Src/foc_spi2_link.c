@@ -68,9 +68,9 @@ static void consume_command_frame(void)
         return;
     }
 
-    /* Main MCU command: word 2, -1000..1000 means -1.0..1.0 normalized Iq. */
+    /* Main MCU command: word 2 is signed Iq in 10 mA/count. */
     iq_command = (int16_t)rx_frame[2];
-    FOC_SetTorque((float)iq_command / 1000.0f);
+    FOC_SetTorque((float)iq_command * 0.01f);
     rx_count++;
 }
 

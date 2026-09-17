@@ -21,11 +21,14 @@
 #define FOC_FAULT_STARTUP       (1UL << 1)
 #define FOC_FAULT_ENCODER       (1UL << 2)
 #define FOC_FAULT_ALIGNMENT     (1UL << 3)
+#define FOC_FAULT_OVERCURRENT   (1UL << 4)
 #define LED_5V      1
 #define LED_3V3     2
 
 void FOC_Init(void);
-void FOC_SetTorque(float iq_norm);
+/* Set q-axis current in amperes. Positive/negative values select torque direction. */
+void FOC_SetTorque(float iq_amp);
+void FOC_PollDriverFault(void);
 void Blink_LED(int led);
 float FOC_GetAngle(void);
 float FOC_GetSpeed(void);

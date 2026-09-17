@@ -54,7 +54,8 @@ void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOC, DRV_ENBLE_Pin|DRV_cotr_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, LED2_Pin|LED1_Pin, GPIO_PIN_RESET);
+  /* Both board LEDs are active-low. Keep them off after GPIO initialization. */
+  HAL_GPIO_WritePin(GPIOA, LED2_Pin|LED1_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, DRV_CS_Pin, GPIO_PIN_SET);

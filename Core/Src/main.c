@@ -10,13 +10,13 @@
 #include "tim.h"
 #include "usart.h"
 
-/* Simulate the existing received Iq command: -1000..1000 = -1..1.
-   30 means normalized Iq 0.03 (0.3 A with the existing 10 A scale).
+/* Simulate the received Iq command in 10 mA/count.
+   100 means 1.00 A; -100 means -1.00 A.
    Set FOC_DEBUG_FAKE_COMMAND to 0 to use real CAN/SPI2 commands. */
 #ifndef FOC_DEBUG_FAKE_COMMAND
 #define FOC_DEBUG_FAKE_COMMAND 1
 #endif
-#define FOC_DEBUG_IQ_COMMAND   30
+#define FOC_DEBUG_IQ_COMMAND   100
 
 /* System clock configuration generated for the STM32G474. */
 void SystemClock_Config(void);
@@ -52,7 +52,7 @@ int main(void)
     /* Start PWM, current sampling, encoder feedback and FOC control. */
     FOC_Init();
 #if FOC_DEBUG_FAKE_COMMAND
-    FOC_SetTorque((float)FOC_DEBUG_IQ_COMMAND / 1000.0f);
+    FOC_SetTorque((float)FOC_DEBUG_IQ_COMMAND * 0.01f);
 #endif
 
     /* Main-loop work is handled by interrupts and low-rate telemetry links. */
@@ -64,9 +64,10 @@ int main(void)
         if ((HAL_GetTick() - last_telemetry_ms) >= 10U)
         {
             last_telemetry_ms = HAL_GetTick();
+            FOC_PollDriverFault();
 #if FOC_DEBUG_FAKE_COMMAND
-            /* Same conversion and entry point as a received command packet. */
-            FOC_SetTorque((float)FOC_DEBUG_IQ_COMMAND / 1000.0f);
+            /* Same 10 mA/count conversion as a received command packet. */
+            FOC_SetTorque((float)FOC_DEBUG_IQ_COMMAND * 0.01f);
 #else
             (void)FOC_Can_SendTelemetry();
             (void)FOC_Spi2_Exchange();
