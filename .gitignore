@@ -1,0 +1,33 @@
+# Keil MDK build output
+/ROBOCUP/
+*.o
+*.obj
+*.d
+*.crf
+*.dep
+*.axf
+*.elf
+*.hex
+*.bin
+*.map
+*.lnp
+*.lst
+*.build_log.htm
+
+# Local verification and temporary files
+/tmp/
+
+# Tool logs and lock files
+*.log
+*.log.lock
+JLinkLog.txt
+
+# Keil per-user workspace state
+*.uvguix
+*.uvguix.*
+
+# Common editor and OS files
+.DS_Store
+Thumbs.db
+*.bak
+*~

@@ -1,1 +1,0 @@
-/* GPIO declarations are provided by the test HAL. */
